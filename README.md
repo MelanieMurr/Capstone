@@ -1,5 +1,7 @@
 # CoCanvas
 
+Hello! Welcome to my fancy capstone project!
+
 An intelligent collaborative workspace. This repository currently contains the installed technology stack and a minimal Next.js foundation; the proposal's application features are still to be implemented.
 
 ## Frontend workspace
