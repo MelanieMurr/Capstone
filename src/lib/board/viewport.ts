@@ -55,7 +55,7 @@ export function zoomAt(
                 pointer.x,
                 pointer.y,
                 factor,
-            ):
+            );
 
             if (viewport.scale <= 0 || factor <= 0) {
                 throw new Error("Scale and zoom factors must be positive.")
@@ -67,7 +67,7 @@ export function zoomAt(
             );
 
             const boardX = (pointer.x - viewport.x) / viewport.scale;
-            const boardY = (pointer.y - viewport.y) ? viewport.scale;
+            const boardY = (pointer.y - viewport.y) / viewport.scale;
 
             return {
                 x: pointer.x - boardX * nextScale,
