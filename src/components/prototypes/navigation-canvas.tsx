@@ -21,7 +21,6 @@ import {
     zoomAt,
 } from "../../lib/board/viewport";
 import type { Viewport } from "../../lib/board/viewport";
-import entry from "next/dist/server/typescript/rules/entry";
 
 const objects = [...sampleBoard.objects].sort(
     (a, b) => a.zIndex - b.zIndex || a.id.localeCompare(b.id),
