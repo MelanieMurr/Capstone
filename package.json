@@ -11,7 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "PLAYWRIGHT_BROWSERS_PATH=./.playwright playwright test",
-    "test:e2e:install": "PLAYWRIGHT_BROWSERS_PATH=./.playwright playwright install chromium"
+    "test:e2e:install": "PLAYWRIGHT_BROWSERS_PATH=./.playwright playwright install chromium",
+    "prototype:sync": "node scripts/prototype-sync.mjs",
+    "prototype:ai": "node scripts/evaluate-ai.mjs"
   },
   "repository": {
     "type": "git",

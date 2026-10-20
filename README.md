@@ -76,3 +76,11 @@ The installed Vercel CLI dependency tree reports security advisories that remain
 - [Next.js installation](https://nextjs.org/docs/app/getting-started/installation)
 - [Supabase Next.js setup](https://supabase.com/docs/guides/getting-started/quickstarts/nextjs)
 - [Playwright browsers](https://playwright.dev/docs/browsers)
+
+## Week 2 prototype lab
+
+Open `/prototypes` for sticky-note manipulation, two-user sync and structured AI
+evaluation. Run `npm run prototype:sync` in a second WebStorm terminal for sync.
+See [prototype findings and verification](docs/week-2-prototypes.md) for exact
+demo steps, implementation decisions, limitations and live AI setup. No additional
+packages are required. Live AI prompt comparison remains pending credentials.
