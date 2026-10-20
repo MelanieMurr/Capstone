@@ -16,5 +16,5 @@ for (const prompt of ['concise', 'grounded']) {
   }, catch: (cause) => new Error(String(cause)) }));
   results.push(result);
 }
-await writeFile('docs/ai-live-results.json', JSON.stringify({ evaluatedAt: new Date().toISOString(), notes, results }, null, 2) + '\n');
-console.log('Saved real API results to docs/ai-live-results.json. Review semantic quality as well as validation.');
+await writeFile('docs/ai-live-results.json', JSON.stringify({ provider: "local-codex-cli", authentication: "chatgpt", evaluatedAt: new Date().toISOString(), notes, results }, null, 2) + '\n');
+console.log('Saved live Codex CLI results to docs/ai-live-results.json. Review semantic quality as well as validation.');

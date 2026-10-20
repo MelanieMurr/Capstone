@@ -1,0 +1,113 @@
+{
+  "provider": "local-codex-cli",
+  "authentication": "chatgpt",
+  "evaluatedAt": "2026-10-20T22:42:03.325Z",
+  "notes": [
+    {
+      "id": "20000000-0000-4000-8000-000000000001",
+      "text": "Users need a quick way to find their boards."
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000002",
+      "text": "Prototype search and test it with classmates."
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000003",
+      "text": "Make collaboration status clear when disconnected."
+    }
+  ],
+  "results": [
+    {
+      "prompt": "concise",
+      "elapsedMs": 5688,
+      "result": {
+        "categories": [
+          {
+            "name": "Board discovery and search",
+            "noteIds": [
+              "20000000-0000-4000-8000-000000000001",
+              "20000000-0000-4000-8000-000000000002"
+            ]
+          },
+          {
+            "name": "Collaboration status",
+            "noteIds": [
+              "20000000-0000-4000-8000-000000000003"
+            ]
+          }
+        ],
+        "summary": "Users need faster board discovery, a search prototype tested with classmates, and clear collaboration status when disconnected.",
+        "actionItems": [
+          {
+            "text": "Prototype board search and test with classmates whether it helps users find boards quickly.",
+            "sourceNoteIds": [
+              "20000000-0000-4000-8000-000000000001",
+              "20000000-0000-4000-8000-000000000002"
+            ]
+          },
+          {
+            "text": "Add a clear disconnected status indicator for collaboration.",
+            "sourceNoteIds": [
+              "20000000-0000-4000-8000-000000000003"
+            ]
+          }
+        ]
+      },
+      "model": "Codex CLI default",
+      "usage": {
+        "input_tokens": 10087,
+        "cached_input_tokens": 0,
+        "output_tokens": 209,
+        "total_tokens": 10296
+      },
+      "source": "local-codex-cli",
+      "authentication": "chatgpt"
+    },
+    {
+      "prompt": "grounded",
+      "elapsedMs": 5323,
+      "result": {
+        "categories": [
+          {
+            "name": "Board discovery",
+            "noteIds": [
+              "20000000-0000-4000-8000-000000000001",
+              "20000000-0000-4000-8000-000000000002"
+            ]
+          },
+          {
+            "name": "Collaboration status",
+            "noteIds": [
+              "20000000-0000-4000-8000-000000000003"
+            ]
+          }
+        ],
+        "summary": "Users need faster board discovery and clear collaboration status when disconnected. Search prototyping and testing with classmates are proposed.",
+        "actionItems": [
+          {
+            "text": "Prototype board search and test it with classmates.",
+            "sourceNoteIds": [
+              "20000000-0000-4000-8000-000000000001",
+              "20000000-0000-4000-8000-000000000002"
+            ]
+          },
+          {
+            "text": "Make disconnected collaboration status clearly visible.",
+            "sourceNoteIds": [
+              "20000000-0000-4000-8000-000000000003"
+            ]
+          }
+        ]
+      },
+      "model": "Codex CLI default",
+      "usage": {
+        "input_tokens": 10132,
+        "cached_input_tokens": 0,
+        "output_tokens": 201,
+        "total_tokens": 10333
+      },
+      "source": "local-codex-cli",
+      "authentication": "chatgpt"
+    }
+  ]
+}

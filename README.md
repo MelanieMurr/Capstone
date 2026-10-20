@@ -62,7 +62,7 @@ Playwright downloads Chromium into `.playwright/` inside this project. The tests
 
 - Create a Supabase project for hosted PostgreSQL and authentication, and put its URL and publishable key in `.env.local`. Database tables, row-level security policies, and authentication flows still need implementation. The PostgreSQL client is installed; no local database server has been installed because the proposal specifies hosted PostgreSQL through Supabase.
 - Add `DATABASE_URL` for direct server-side PostgreSQL access if needed. Keep database credentials and `OPENAI_API_KEY` on the server; do not prefix them with `NEXT_PUBLIC_`.
-- Create an OpenAI API key and configure billing before using the AI assistant. Installing the SDK does not activate an API account.
+- The AI evaluation prototype uses the installed Codex CLI with ChatGPT sign-in. Run `codex login status` in WebStorm; no API key or separate API billing is required for this local provider. A hosted production AI integration remains separate work.
 - Implement and host the authenticated WebSocket service on a compatible platform, then set `NEXT_PUBLIC_WEBSOCKET_URL`. `y-websocket` supplies the client provider; installing packages does not start a collaboration server. The hosting provider is unspecified in the proposal.
 - Connect this GitHub repository to Vercel, or run `npx vercel` when ready to deploy. No deployment or external account changes were made during setup.
 
@@ -83,4 +83,6 @@ Open `/prototypes` for sticky-note manipulation, two-user sync and structured AI
 evaluation. Run `npm run prototype:sync` in a second WebStorm terminal for sync.
 See [prototype findings and verification](docs/week-2-prototypes.md) for exact
 demo steps, implementation decisions, limitations and live AI setup. No additional
-packages are required. Live AI prompt comparison remains pending credentials.
+packages are required. Both live prompts have been evaluated through local Codex
+using ChatGPT sign-in; outputs are saved in `docs/ai-live-results.json`. The
+prototype ignores `OPENAI_API_KEY` and `OPENAI_MODEL` and has no API-key fallback.
