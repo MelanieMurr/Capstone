@@ -31,11 +31,16 @@ describe("authentication and dashboard domain", () => {
     await expect(result(authenticate(supabase, "signup", { email: "bad", password: "short" }, "http://localhost/auth/callback"))).rejects.toThrow("12–128");
     expect(db.auth.signUp).not.toHaveBeenCalled();
   });
-  it("uses confirmation flow when signup has no session", async () => {
+  it("opens a session immediately after signup without email options", async () => {
     const { db, supabase } = client();
-    const value = await result(authenticate(supabase, "signup", { email: "Person@Example.test", password: "long-test-password-123" }, "http://localhost/auth/callback"));
-    expect(value.signedIn).toBe(false); expect(value.message).toContain("Check your email");
-    expect(db.auth.signUp).toHaveBeenCalledWith({ email: "person@example.test", password: "long-test-password-123", options: { emailRedirectTo: "http://localhost/auth/callback" } });
+    db.auth.signUp.mockResolvedValue({ data: { session: { access_token: "test" } }, error: null });
+    const value = await result(authenticate(supabase, "signup", { email: " Person@Example.test ", password: "long-test-password-123" }, ""));
+    expect(value.signedIn).toBe(true);
+    expect(db.auth.signUp).toHaveBeenCalledWith({ email: "person@example.test", password: "long-test-password-123" });
+  });
+  it("reports a deployment configuration mismatch rather than promising an email", async () => {
+    const { supabase } = client();
+    await expect(result(authenticate(supabase, "signup", { email: "person@example.test", password: "long-test-password-123" }, ""))).rejects.toThrow("turn off Confirm email");
   });
   it("does not expose provider details on failed login", async () => {
     const { db, supabase } = client(); db.auth.signInWithPassword.mockResolvedValue({ data: {}, error: { message: "Sensitive provider detail" } });

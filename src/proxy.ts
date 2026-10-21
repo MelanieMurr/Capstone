@@ -4,6 +4,8 @@ import type { NextRequest } from "next/server";
 import { Effect } from "effect";
 import { supabaseConfig } from "./lib/supabase/config";
 
+import { publicRequestOrigin } from "./lib/foundation/http";
+
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
   return Effect.runPromise(Effect.match(Effect.tryPromise({ try: async () => {
@@ -16,7 +18,7 @@ export async function proxy(request: NextRequest) {
     if (!data.user) {
       const rejected = request.nextUrl.pathname.startsWith("/api/")
         ? NextResponse.json({ error: "Please sign in to continue." }, { status: 401 })
-        : NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(request.nextUrl.pathname)}`, request.url));
+        : NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(request.nextUrl.pathname)}`, publicRequestOrigin(request)));
       response.cookies.getAll().forEach((cookie) => rejected.cookies.set(cookie));
       rejected.headers.set("Cache-Control", "private, no-store");
       return rejected;

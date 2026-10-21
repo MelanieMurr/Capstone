@@ -12,11 +12,16 @@ test("protected pages reject unauthenticated access and auth form validates erro
   await page.getByLabel("Password", { exact: true }).fill("short");
   await page.getByRole("button", { name: "Create account", exact: true }).click();
   expect(await page.getByLabel("Password", { exact: true }).evaluate((element: HTMLInputElement) => element.validity.tooShort)).toBe(true);
-  // Exercise UI confirmation messaging without sending email to anyone.
-  await page.route("**/api/auth/signup", (route) => route.fulfill({ json: { message: "Check your email to confirm your account.", signedIn: false } }));
+  // Verify direct signup navigation without emailing or creating a real user.
+  await page.route("**/api/auth/signup", (route) => route.fulfill({ json: { message: "Account created.", signedIn: true } }));
+  await page.route("**/dashboard", (route) => route.fulfill({ contentType: "text/html", body: "<h1>Signed in dashboard</h1>" }));
   await page.getByLabel("Password", { exact: true }).fill("Long-enough-test-pass123");
+  await page.getByRole("button", { name: "Show password", exact: true }).click();
+  await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("type", "text");
   await page.getByRole("button", { name: "Create account", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Check your email");
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByRole("heading", { name: "Signed in dashboard" })).toBeVisible();
+
 });
 
 test("real auth, private dashboard CRUD and saved-board restoration", async ({ browser }) => {

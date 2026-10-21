@@ -12,7 +12,7 @@ export const authenticated = (client: SupabaseClient) => Effect.tryPromise({
     return data.user;
   }, catch: fail,
 });
-export const authenticate = (client: SupabaseClient, action: "signin" | "signup" | "signout", input: unknown, callback: string) => Effect.tryPromise({
+export const authenticate = (client: SupabaseClient, action: "signin" | "signup" | "signout", input: unknown, _callback: string) => Effect.tryPromise({
   try: async () => {
     if (action === "signout") {
       const { error } = await client.auth.signOut({ scope: "local" });
@@ -23,12 +23,13 @@ export const authenticate = (client: SupabaseClient, action: "signin" | "signup"
     if (!parsed.success) throw new AppError(action === "signup" ? "Enter a valid email and a password of 12–128 characters." : "Enter your email and password.", 400);
     if (action === "signin") {
       const { error } = await client.auth.signInWithPassword(parsed.data);
-      if (error) throw new AppError("Sign-in failed. Check your email, password and email confirmation.", 401);
+      if (error) throw new AppError("Sign-in failed. The email and password did not match.", 401);
       return { message: "Signed in.", signedIn: true };
     }
-    const { data, error } = await client.auth.signUp({ ...parsed.data, options: { emailRedirectTo: callback } });
+    const { data, error } = await client.auth.signUp(parsed.data);
     if (error) throw new AppError(error.status === 429 ? "Too many signup attempts. Please wait before trying again." : "Could not create an account. Please check your details and try again.", error.status === 429 ? 429 : 400);
-    return { message: data.session ? "Account created." : "Check your email to confirm your account, then sign in. If you already have an account, use Sign in.", signedIn: Boolean(data.session) };
+    if (!data.session) throw new AppError("Direct signup is not enabled in Supabase yet. The project owner must turn off Confirm email in Authentication settings.", 503);
+    return { message: "Account created.", signedIn: true };
   }, catch: fail,
 });
 export const listBoards = (client: SupabaseClient) => Effect.gen(function* () {

@@ -14,7 +14,8 @@ and persistence. The existing public canvas and prototype routes remain usable.
    `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` from Supabase → Project Settings → API.
    This project already has those two values configured locally. Never put a
    service-role key in a `NEXT_PUBLIC_` variable.
-4. Run `npm run dev`. Visit `/signup`, confirm your email, then visit `/login`.
+4. Run `npm run dev`. Visit `/signup` to create an account and open your dashboard immediately.
+   Existing users can visit `/login`.
    The dashboard is `/dashboard`; opening a board goes to `/boards/<uuid>`.
    `/` is still the public browser-local demo. Cloud boards save to Supabase.
 5. For the existing sync lab, run `npm run prototype:sync` in another terminal.
@@ -25,22 +26,22 @@ and persistence. The existing public canvas and prototype routes remain usable.
    are ignored by the local Codex prototype. `DATABASE_URL` is optional and is
    not used by the application: Supabase's authenticated Data API handles SQL.
 
-For your normal browser origin, add the callback URL in Supabase → Authentication
-→ URL Configuration → Redirect URLs. For example, add
-`http://localhost:3000/auth/callback` (and the `127.0.0.1` equivalent if using it).
-Set Site URL to the application's origin. Production needs its own HTTPS origin
-and callback entry. These settings are deployment-specific and must match the
-URL you actually use. The default confirmation email can follow the PKCE callback
-flow; its browser must retain the signup cookie. `/auth/confirm` additionally
-supports an email `token_hash` template if you later customize email delivery.
-Supabase's default email service has recipient/rate restrictions; configure SMTP
-for general public registration. Automated tests do not send confirmation emails.
+Authentication is intentionally limited to email/password signup, sign-in and
+sign-out. In Supabase → Authentication → Sign In / Providers, turn **Confirm email**
+off and save. Keep the Email provider and new-user signup enabled. This setting
+must be changed in Supabase itself; removing frontend messages does not disable
+server-side confirmation. The app fails visibly if signup returns no session.
+
+There are no verification callbacks, reset-password pages or password-reset API
+operations. Existing confirmed users retain their passwords. New users are not
+asked to follow email links. Keep your password: self-service email recovery is
+not implemented in this simplified prototype.
 
 ## Source map
 
 | Location | Responsibility |
 | --- | --- |
-| `src/app/login`, `signup`, `auth` | Account forms and confirmation callbacks |
+| `src/app/login`, `signup` | Account signup and sign-in forms |
 | `src/proxy.ts` | Refresh session cookies and protect dashboard/board routes |
 | `src/app/dashboard`, `src/components/foundation/dashboard.tsx` | Board listing, search, creation, rename, delete confirmation |
 | `src/app/boards/[id]`, `src/components/foundation/saved-board.tsx` | Authorized canvas loading and serialized autosave |
@@ -115,8 +116,7 @@ outside CI. Stop the development server before running a production build, then
 restart it afterward; avoid sharing its generated route manifests with a build.
 
 The default browser run tests the demo, navigation, manipulation, independent sync
-sessions, AI validation, unauthorized routes and signup UI validation/confirmation
-messaging. Email confirmation messaging is mocked to avoid sending email. One live
+sessions, AI validation, unauthorized routes and signup UI validation and immediate dashboard navigation. Signup success is mocked in the default UI test to avoid creating accounts. One live
 Supabase test is explicitly skipped unless a fixture file is supplied.
 
 For the live test, create two dedicated, confirmed test accounts in the Supabase
@@ -142,3 +142,24 @@ viewers could read but not write, and editors could update documents but not del
 boards. It checks RLS on all five public tables and runs Supabase's
 security advisor. The remaining project-level advisor warning is that leaked
 password protection is disabled; see [Supabase password security](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
+
+## October 21 simplification
+
+The initial real signup hit Supabase's email rate limit. After the project owner
+turned Confirm email off, the public Auth settings reported
+`mailer_autoconfirm: true`. A fresh Gmail alias of the supplied junk inbox then
+passed the complete live browser test: immediate signup, protected dashboard,
+reload, signout, unauthorized access rejection, wrong-password rejection and
+correct-password sign-in in a separate empty browser context. Removed email-reset
+endpoints and the old callback returned 404. The disposable account was signed out
+and removed; the original junk-email account was left unchanged.
+
+The repeatable opt-in test is `tests/e2e/signup.spec.ts`. Run it with a fresh
+address (signup creates a real user):
+
+```sh
+COCANVAS_LIVE_SIGNUP_EMAIL=your-fresh-test-address@example.com npm run test:e2e -- tests/e2e/signup.spec.ts
+```
+
+Delete that dedicated test user in Supabase after verification. Without the
+variable, the live-signup test is skipped. No test password is logged or committed.
