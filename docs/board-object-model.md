@@ -118,3 +118,11 @@ invalid inputs, references/IDs/version, attachment geometry and nested-map mergi
 The prototype should evaluate shape scope, connector interaction/bounds, same-field
 text edits, concurrent delete/attach behavior, and geometry under pan/zoom before
 treating these initial decisions as final production behavior.
+
+### Shape labels
+
+Rectangles and ellipses also store `text` (up to 10,000 characters), `fontSize`
+(8–256; default 20) and six-digit `textColor` (default `#222222`). These fields
+belong to the shape object, so labels move, resize and rotate with it. Old shape
+snapshots receive empty text and the typography defaults during validation; the
+document stays at schema version 1. No additional text object or ID is created.

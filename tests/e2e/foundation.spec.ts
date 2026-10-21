@@ -62,6 +62,27 @@ test("real auth, private dashboard CRUD and saved-board restoration", async ({ b
     }).toBe(true);
     await alice.reload();
     await expect(alice.getByRole("button", { name: "sticky-note: Persisted private idea", exact: true })).toBeVisible();
+    // The production canvas preserves each supported object through cloud saving.
+    await alice.getByRole("button", { name: "Text", exact: true }).click();
+    await alice.getByRole("region", { name: "Board canvas" }).click({ position: { x: 440, y: 180 } });
+    await alice.getByRole("textbox", { name: "Object content", exact: true }).fill("Saved standalone text");
+    await alice.getByRole("spinbutton", { name: "Font size", exact: true }).fill("28");
+    await alice.getByRole("button", { name: "Shape", exact: true }).click();
+    await alice.getByRole("region", { name: "Board canvas" }).click({ position: { x: 220, y: 360 } });
+    await alice.getByRole("combobox", { name: "Shape type", exact: true }).selectOption("ellipse");
+    await alice.getByRole("textbox", { name: "Object content", exact: true }).fill("Saved shape label");
+    await alice.getByRole("spinbutton", { name: "Font size", exact: true }).fill("22");
+    await alice.getByRole("spinbutton", { name: "width", exact: true }).fill("260");
+    await expect.poll(async () => {
+      const value = await (await alice.request.get(`/api/boards/${boardId}`)).json();
+      return value.document?.objects?.some((item: { type: string; shapeType?: string; width: number }) => item.type === "shape" && item.shapeType === "ellipse" && item.width === 260);
+    }).toBe(true);
+    const beforeReload = (await (await alice.request.get(`/api/boards/${boardId}`)).json()).document;
+    await alice.reload();
+    await expect(alice.getByTestId("board-renderer").locator("canvas")).toBeVisible();
+    await expect(alice.getByRole("button", { name: "text: Saved standalone text", exact: true })).toBeVisible();
+    await expect(alice.getByRole("button", { name: "shape: ellipse: Saved shape label", exact: true })).toBeVisible();
+    expect((await (await alice.request.get(`/api/boards/${boardId}`)).json()).document).toEqual(beforeReload);
     // Stale revisions are rejected instead of silently replacing another edit.
     const current = await (await alice.request.get(`/api/boards/${boardId}`)).json();
     const accepted = await alice.request.put(`/api/boards/${boardId}/document`, { data: { document: current.document, revision: current.revision } });

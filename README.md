@@ -16,8 +16,11 @@ Delete remove, Escape cancel, and Ctrl/Cmd+Z (Shift to redo).
 Effect programs validate edits and handle local storage/export failures. The public demo automatically saves in this browser after edits; Export downloads a JSON copy.
 Use My boards to sign in and manage boards saved to your account.
 Sharing and the assistant explain their pending backend connections. Local saving
-is not cloud persistence or multi-user synchronization. Width/height in the
-inspector control resizing; drawn selection corners are selection indicators.
+is not cloud persistence or multi-user synchronization. Drag either selection
+corner to resize notes, text and shapes; width/height controls in the inspector
+also resize objects. React-Konva renders the board,
+with accessible DOM controls for selection and gestures. See
+[canvas editing](docs/canvas-editing.md) for controls and verification.
 
 ## Development
 
