@@ -90,3 +90,41 @@ Verified on October 21: 59 unit/integration tests passed, 13 browser tests passe
 separate opt-in live-signup test was skipped because it is unrelated to these
 canvas changes. Desktop/mobile screenshots were inspected. Disposable test
 accounts were signed out globally and removed after verification.
+
+## Connectors and deletion
+
+Choose Connector (C), then choose two different notes, text elements or shapes.
+The first target is highlighted; the resulting connector is selected automatically.
+Enter/Space on a focused canvas object can also choose endpoints. Escape cancels
+creation. New connectors attach at facing edge midpoints using stable target IDs
+and normalized anchors. The renderer resolves those anchors from the targets'
+current geometry, so movement, resizing and rotation do not detach the line.
+
+Select a line directly, focus it and press Enter, or choose it in the object list.
+Its click area stays at least 16 screen pixels wide at every zoom level. The Design
+panel edits arrow style, line color and line width. Connectors have descriptive
+accessible names based on their endpoints. They cannot attach to other connectors.
+Imported free endpoints retain their absolute board coordinates; the creation tool
+currently connects two objects rather than drawing free-ended lines.
+
+Delete object in the Design panel, Delete or Backspace removes selected notes,
+text, rectangles, ellipses or connectors. Removing a target also removes every
+attached connector in the same validated Effect update; removing a connector
+preserves both targets. Selection and pending endpoint references are cleared.
+Undo restores the target and its connectors with their original IDs in one step;
+redo removes the same objects. Text fields and native select controls retain their
+normal editing keys. Deletion also cancels active object gestures so they cannot
+bring a removed object back.
+
+`connectObjects` and `deleteObject` live in `src/lib/board/operations.ts`.
+`tests/e2e/connectors.spec.ts` covers actual line selection, keyboard access,
+geometry changes, all supported deletions after pan/zoom, undo/redo, reload and
+pending-source deletion. Domain tests also cover dangling-reference prevention,
+one-sided attachments and preservation of unrelated free connectors. The live
+foundation test saves a connector, deletes its target and connector, undoes the
+operation, then restores the same IDs and references from Supabase.
+
+Connectors/deletion verification: 67 unit/integration tests passed, 22 browser
+tests passed including the live private-board scenario, and the production build
+passed. The unrelated opt-in live-signup test was skipped. All test sessions were
+revoked and disposable accounts removed afterward.

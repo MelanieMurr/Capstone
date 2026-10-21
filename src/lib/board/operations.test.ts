@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
 import { boardDocumentSchema, boardObjectSchema, resolveEndpoint } from "./model";
-import { createObject, patchObject, resizeObject } from "./operations";
+import { connectObjects, createObject, deleteObject, patchObject, resizeObject } from "./operations";
 const id = "50000000-0000-4000-8000-000000000001";
 const other = "50000000-0000-4000-8000-000000000002";
 const makeBoard = (rotation = 0) => boardDocumentSchema.parse({ boardId: "50000000-0000-4000-8000-000000000003", schemaVersion: 1, objects: [
@@ -63,5 +63,58 @@ describe("shape text", () => {
     expect(resized.objects.find((item) => item.id === other)).toMatchObject({ id: other, type: "shape", x: 520, y: 530, width: 240, height: 180, text: "A labelled shape\nwith two lines", fontSize: 28, textColor: "#123456" });
     expect(() => run(patchObject(board, other, { text: "x".repeat(10001) }))).toThrow();
     expect(() => run(patchObject(board, other, { fontSize: 0 }))).toThrow();
+  });
+});
+
+describe("connectors and deletion", () => {
+  it("creates attached references with facing edge anchors", () => {
+    const board = run(patchObject(makeBoard(), other, { y: 90 }));
+    const next = run(connectObjects(board, id, other));
+    expect(next.objects.at(-1)).toMatchObject({ type: "connector", start: { kind: "attached", objectId: id, anchorX: 1, anchorY: 0.5 }, end: { kind: "attached", objectId: other, anchorX: 0, anchorY: 0.5 } });
+    expect(next.objects.slice(0, 2)).toEqual(board.objects);
+    expect(() => run(connectObjects(board, id, id))).toThrow();
+    expect(() => run(connectObjects(board, id, "missing"))).toThrow();
+  });
+  it("keeps stable references while endpoints follow movement, resizing and rotation", () => {
+    const original = run(connectObjects(run(patchObject(makeBoard(), other, { y: 90 })), id, other));
+    const connector = original.objects.at(-1)!;
+    if (connector.type !== "connector") throw new Error("Expected connector");
+    const moved = run(patchObject(original, id, { x: 120, y: 150, width: 300, height: 200, rotation: 90 }));
+    const point = resolveEndpoint(connector.start, moved.objects)!;
+    expect(point.x).toBeCloseTo(20); expect(point.y).toBeCloseTo(450);
+    expect(moved.objects.at(-1)).toEqual(connector);
+  });
+  it("supports notes, text, rectangles and ellipses as endpoints, but rejects connectors", () => {
+    const board = boardDocumentSchema.parse({ ...makeBoard(), objects: [
+      ...makeBoard().objects,
+      { id: "50000000-0000-4000-8000-000000000010", type: "text", x: 600 },
+      { id: "50000000-0000-4000-8000-000000000011", type: "shape", shapeType: "ellipse", x: 900 },
+    ] });
+    for (const target of board.objects.slice(1)) expect(run(connectObjects(board, id, target.id)).objects).toHaveLength(5);
+    const connected = run(connectObjects(board, id, other));
+    expect(() => run(connectObjects(connected, id, connected.objects.at(-1)!.id))).toThrow();
+  });
+  it("deletes only a connector when it is selected", () => {
+    const original = makeBoard(); const connected = run(connectObjects(original, id, other));
+    expect(run(deleteObject(connected, connected.objects.at(-1)!.id))).toEqual(original);
+  });
+  it("deletes each supported object together with all attached connectors atomically", () => {
+    for (const type of ["sticky-note", "text", "shape"] as const) {
+      const board = boardDocumentSchema.parse({ ...makeBoard(), objects: [{ id, type }, makeBoard().objects[1]] });
+      const connected = run(connectObjects(run(connectObjects(board, id, other)), other, id));
+      const deleted = run(deleteObject(connected, id));
+      expect(deleted.objects).toEqual([board.objects[1]]);
+      expect(boardDocumentSchema.safeParse(deleted).success).toBe(true);
+      expect(connected.objects).toHaveLength(4);
+    }
+  });
+  it("cleans one-sided attachments but preserves unrelated free connectors", () => {
+    const a = "50000000-0000-4000-8000-000000000012", b = "50000000-0000-4000-8000-000000000013";
+    const board = boardDocumentSchema.parse({ ...makeBoard(), objects: [ ...makeBoard().objects,
+      { id: a, type: "connector", start: { kind: "free", x: 1, y: 2 }, end: { kind: "attached", objectId: id } },
+      { id: b, type: "connector", start: { kind: "free", x: 1, y: 2 }, end: { kind: "free", x: 3, y: 4 } },
+    ] });
+    expect(run(deleteObject(board, id)).objects.map((item) => item.id)).toEqual([other, b]);
+    expect(() => run(deleteObject(board, "missing"))).toThrow();
   });
 });

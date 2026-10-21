@@ -44,9 +44,9 @@ so do not duplicate boardId in every object.
 
 An attached endpoint uses anchorX/anchorY between 0 and 1 within the target's
 unrotated bounding box. `resolveEndpoint` computes the rotated board position;
-anchor (0.5,0.5) is the center. For ellipses, edge-anchor placement is a future
-interaction concern: normalized bounding-box anchors are not automatically
-snapped to the curved perimeter. Connectors cannot attach to other connectors.
+anchor (0.5,0.5) is the center. The editor chooses facing cardinal edge midpoints at creation, which also land
+on an ellipse's perimeter. Arbitrary normalized bounding-box anchors are not
+automatically snapped to the curved perimeter. Connectors cannot attach to other connectors.
 Free endpoints use absolute board coordinates. Their endpoints determine rendered
 geometry; the connector's shared x/y/width/height/rotation fields are reserved
 metadata and must not also transform the endpoints. Keep those defaults until

@@ -83,6 +83,29 @@ test("real auth, private dashboard CRUD and saved-board restoration", async ({ b
     await expect(alice.getByRole("button", { name: "text: Saved standalone text", exact: true })).toBeVisible();
     await expect(alice.getByRole("button", { name: "shape: ellipse: Saved shape label", exact: true })).toBeVisible();
     expect((await (await alice.request.get(`/api/boards/${boardId}`)).json()).document).toEqual(beforeReload);
+    // Connectors and deletion are persisted together in the private board.
+    const source = beforeReload.objects.find((item: { type: string }) => item.type === "sticky-note");
+    const target = beforeReload.objects.find((item: { type: string }) => item.type === "shape");
+    await alice.getByRole("button", { name: "Connector", exact: true }).click();
+    await alice.locator(`[data-object-id="${source.id}"]`).click();
+    await alice.locator(`[data-object-id="${target.id}"]`).click();
+    await expect.poll(async () => {
+      const value = await (await alice.request.get(`/api/boards/${boardId}`)).json();
+      return value.document.objects.some((item: { type: string }) => item.type === "connector");
+    }).toBe(true);
+    const linked = (await (await alice.request.get(`/api/boards/${boardId}`)).json()).document;
+    await alice.locator(`[data-object-id="${target.id}"]`).click();
+    await alice.getByRole("button", { name: "Delete object", exact: true }).click();
+    await expect.poll(async () => {
+      const value = await (await alice.request.get(`/api/boards/${boardId}`)).json();
+      return value.document.objects.some((item: { id: string; type: string }) => item.id === target.id || item.type === "connector");
+    }).toBe(false);
+    await alice.getByRole("button", { name: "Undo", exact: true }).click();
+    await expect.poll(async () => (await (await alice.request.get(`/api/boards/${boardId}`)).json()).document).toEqual(linked);
+    await alice.reload();
+    const connection = linked.objects.find((item: { type: string }) => item.type === "connector");
+    await expect(alice.locator(`[data-object-id="${connection.id}"]`)).toHaveAttribute("role", "button");
+    expect((await (await alice.request.get(`/api/boards/${boardId}`)).json()).document).toEqual(linked);
     // Stale revisions are rejected instead of silently replacing another edit.
     const current = await (await alice.request.get(`/api/boards/${boardId}`)).json();
     const accepted = await alice.request.put(`/api/boards/${boardId}/document`, { data: { document: current.document, revision: current.revision } });

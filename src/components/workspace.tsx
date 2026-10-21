@@ -4,11 +4,11 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { Effect } from "effect";
-import { boardObjectSchema, resolveEndpoint } from "../lib/board/model";
+import { resolveEndpoint } from "../lib/board/model";
 import type { BoardDocument, BoardObject } from "../lib/board/model";
 import { exportBoard, initialBoard, loadBoard, saveBoard, validateBoard } from "../lib/board/frontend";
 
-import { createObject, objectLabel, patchObject, resizeObject } from "../lib/board/operations";
+import { connectObjects, connectorLabel, createObject, deleteObject, objectLabel, patchObject, resizeObject } from "../lib/board/operations";
 import type { ResizeCorner } from "../lib/board/operations";
 import { panTo } from "../lib/board/viewport";
 const BoardCanvas = dynamic(() => import("./board-canvas"), { ssr: false });
@@ -73,8 +73,23 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
   }
   function remove() {
     if (!selected || readOnly) return;
-    commit({ ...board, objects: board.objects.filter((item) => item.id !== selected && !(item.type === "connector" && [item.start, item.end].some((end) => end.kind === "attached" && end.objectId === selected))) });
-    setSelected(null);
+    drag.current = null;
+    run(deleteObject(board, selected), (next) => { commit(next); setSelected(null); setConnectFrom(null); });
+  }
+  useEffect(() => {
+    setSelected((id) => board.objects.some((item) => item.id === id) ? id : null);
+    setConnectFrom((id) => board.objects.some((item) => item.id === id && item.type !== "connector") ? id : null);
+  }, [board]);
+  function choose(item: BoardObject) {
+    if (!readOnly && tool === "connector") {
+      if (item.type === "connector") { setStatus("Choose a note, text element or shape to connect."); return; }
+      if (!connectFrom) { setConnectFrom(item.id); setSelected(item.id); setPanel("properties"); setStatus("Select another object to connect"); return; }
+      run(connectObjects(board, connectFrom, item.id), (next) => {
+        commit(next); setSelected(next.objects.at(-1)!.id); setPanel("properties"); setConnectFrom(null); setTool("select"); setStatus("Connector created");
+      });
+      return;
+    }
+    setSelected(item.id); setPanel("properties");
   }
   function undo() {
     if (readOnly) return;
@@ -95,15 +110,7 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
   function down(event: ReactPointerEvent, item?: BoardObject) {
     if ((event.target as HTMLElement).closest("input,textarea,button")) return;
     if (readOnly && item && tool !== "hand") { event.stopPropagation(); setSelected(item.id); setPanel("properties"); return; }
-    if (!readOnly && item && tool === "connector") {
-      event.stopPropagation();
-      if (item.type === "connector") return;
-      if (!connectFrom) { setConnectFrom(item.id); setStatus("Select another object to connect"); return; }
-      if (connectFrom === item.id) return;
-      run(Effect.try({ try: () => boardObjectSchema.parse({ id: crypto.randomUUID(), type: "connector", start: { kind: "attached", objectId: connectFrom, anchorX: 1, anchorY: 0.5 }, end: { kind: "attached", objectId: item.id, anchorX: 0, anchorY: 0.5 } }), catch: () => new Error("Could not create this connection.") }), (connector) => {
-        commit({ ...board, objects: [...board.objects, connector] }); setConnectFrom(null); setTool("select");
-      }); return;
-    }
+    if (!readOnly && item && tool === "connector") { event.stopPropagation(); choose(item); return; }
     if (item && tool !== "hand") {
       event.stopPropagation(); setSelected(item.id); setPanel("properties");
       if (item.type === "connector") return;
@@ -140,7 +147,7 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
   }
   useEffect(() => {
     function key(event: KeyboardEvent) {
-      if ((event.target as HTMLElement).closest("input,textarea,[contenteditable]")) return;
+      if ((event.target as HTMLElement).closest("input,textarea,select,[contenteditable]")) return;
       if ((event.ctrlKey || event.metaKey) && event.key === "z") { event.preventDefault(); event.shiftKey ? redo() : undo(); }
       else if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); remove(); }
       else if (event.key === "Escape") { cancelGesture(); setSelected(null); setConnectFrom(null); setTool("select"); setDialog(false); }
@@ -160,7 +167,10 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
       <div className="workspace-label">YOUR WORKSPACE</div>
       <button className="nav-item active" onClick={() => { setPan({ x: 35, y: 25 }); setZoom(0.85); }}>▦ <span>{identity?.title ?? "First things first"}</span><span className="small">↗</span></button>
       <div className="sidebar-section"><div className="section-title">ON THIS BOARD <span>{board.objects.length}</span></div><input aria-label="Search objects" className="search" placeholder="⌕  Find an idea…" value={search} onChange={(event) => setSearch(event.target.value)} />
-        <div className="object-list">{board.objects.filter((item) => item.type !== "connector").filter((item) => JSON.stringify(item).toLowerCase().includes(search.toLowerCase())).map((item) => <button key={item.id} className={`object-row ${selected === item.id ? "chosen" : ""}`} onClick={() => { setSelected(item.id); setPanel("properties"); setPan({ x: 80 - item.x * zoom, y: 90 - item.y * zoom }); }}><span className="object-dot" style={{ background: item.type === "sticky-note" ? item.backgroundColor : "#e8ece9" }}>{item.type === "text" ? "T" : ""}</span><span>{item.type === "sticky-note" ? item.text.split("\n")[0] || "Untitled note" : item.type === "text" ? item.content.split("\n")[0] : item.type === "shape" ? item.text.split("\n")[0] || "Untitled shape" : "Object"}</span></button>)}</div>
+        <div className="object-list">{board.objects.filter((item) => `${JSON.stringify(item)} ${item.type === "connector" ? connectorLabel(item, board.objects) : ""}`.toLowerCase().includes(search.toLowerCase())).map((item) => <button key={item.id} className={`object-row ${selected === item.id ? "chosen" : ""}`} onClick={() => { setSelected(item.id); setPanel("properties"); const start = item.type === "connector" ? resolveEndpoint(item.start, board.objects) : null;
+          const end = item.type === "connector" ? resolveEndpoint(item.end, board.objects) : null;
+          const point = start && end ? { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 } : item;
+          setPan({ x: 80 - point.x * zoom, y: 90 - point.y * zoom }); }}><span className="object-dot" style={{ background: item.type === "sticky-note" ? item.backgroundColor : "#e8ece9" }}>{item.type === "text" ? "T" : ""}</span><span>{item.type === "sticky-note" ? item.text.split("\n")[0] || "Untitled note" : item.type === "text" ? item.content.split("\n")[0] : item.type === "shape" ? item.text.split("\n")[0] || "Untitled shape" : connectorLabel(item, board.objects)}</span></button>)}</div>
       </div>
       <div className="sidebar-bottom"><div className="tip-icon">✦</div><strong>A little room for possibility</strong><p>Start with a thought.<br />Make something of it.</p><button className="text-button" onClick={() => setPanel("ai")}>Explore your ideas <span>→</span></button></div>
       <div className="sidebar-footer"><span className="avatar tiny">M</span><div>My workspace<small>{identity ? readOnly ? "View-only access" : "Cloud saved" : "Local mode"}</small></div></div>
@@ -169,11 +179,14 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
       <div className="canvas-breadcrumb">WORKSPACE <span>/</span> <strong>{identity?.title ?? "First things first"}</strong></div>
       <BoardCanvas board={board} pan={pan} zoom={zoom} selected={selected} onError={setStatus} />
       <div className="canvas-world" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}>
-        <svg className="connections" width="1" height="1" overflow="visible"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8" fill="none" stroke="context-stroke" /></marker></defs>{board.objects.filter((item) => item.type === "connector").map((item) => {
+        <svg className="connections" width="1" height="1" overflow="visible" aria-label="Board connectors">{board.objects.filter((item) => item.type === "connector").map((item) => {
           const start = resolveEndpoint(item.start, board.objects), end = resolveEndpoint(item.end, board.objects); if (!start || !end) return null;
-          return <g key={item.id} onPointerDown={(event) => down(event, item)}><path d={`M${start.x},${start.y} L${end.x},${end.y}`} stroke="transparent" strokeWidth="16" pointerEvents="stroke" /><path d={`M${start.x},${start.y} L${end.x},${end.y}`} stroke="transparent" strokeWidth={item.strokeWidth}  /></g>;
+          return <g key={item.id} role="button" tabIndex={0} data-object-id={item.id} aria-label={connectorLabel(item, board.objects)} aria-pressed={selected === item.id}
+            onPointerDown={(event) => down(event, item)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); choose(item); } }}>
+            <path d={`M${start.x},${start.y} L${end.x},${end.y}`} stroke="transparent" strokeWidth={Math.max(item.strokeWidth, 16 / zoom)} pointerEvents="stroke" />
+          </g>;
         })}</svg>
-        {[...board.objects].sort((a, b) => a.zIndex - b.zIndex || a.id.localeCompare(b.id)).filter((item) => item.type !== "connector").map((item) => <div key={item.id} role="button" tabIndex={0} data-object-id={item.id} aria-label={objectLabel(item)} aria-pressed={selected === item.id} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelected(item.id); } }} onPointerDown={(event) => down(event, item)} className={`canvas-object ${item.type} ${selected === item.id || connectFrom === item.id ? "selected" : ""}`} style={{ left: item.x, top: item.y, width: item.width, height: item.height, transform: `rotate(${item.rotation}deg)`, zIndex: item.zIndex + 1, background: item.type === "sticky-note" ? item.backgroundColor : item.type === "shape" ? item.fill : "transparent", color: item.type === "text" ? item.textColor : undefined, fontSize: item.type === "text" ? item.fontSize : undefined, border: item.type === "shape" ? `${item.borderWidth}px solid ${item.borderColor}` : undefined, borderRadius: item.type === "shape" && item.shapeType === "ellipse" ? "50%" : undefined }}>
+        {[...board.objects].sort((a, b) => a.zIndex - b.zIndex || a.id.localeCompare(b.id)).filter((item) => item.type !== "connector").map((item) => <div key={item.id} role="button" tabIndex={0} data-object-id={item.id} aria-label={objectLabel(item)} aria-pressed={selected === item.id} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); choose(item); } }} onPointerDown={(event) => down(event, item)} className={`canvas-object ${item.type} ${selected === item.id || connectFrom === item.id ? "selected" : ""}`} style={{ left: item.x, top: item.y, width: item.width, height: item.height, transform: `rotate(${item.rotation}deg)`, zIndex: item.zIndex + 1, background: item.type === "sticky-note" ? item.backgroundColor : item.type === "shape" ? item.fill : "transparent", color: item.type === "text" ? item.textColor : undefined, fontSize: item.type === "text" ? item.fontSize : undefined, border: item.type === "shape" ? `${item.borderWidth}px solid ${item.borderColor}` : undefined, borderRadius: item.type === "shape" && item.shapeType === "ellipse" ? "50%" : undefined }}>
           {selected === item.id && !readOnly && tool === "select" && (["top-left", "bottom-right"] as const).map((corner) => <button key={corner} className={`handle ${corner}`} aria-label={`Resize ${corner}`} title="Drag to resize, or use arrow keys" onPointerDown={(event) => startResize(event, item, corner)} onKeyDown={(event) => {
             const delta = { ArrowLeft: { x: -10, y: 0 }, ArrowRight: { x: 10, y: 0 }, ArrowUp: { x: 0, y: -10 }, ArrowDown: { x: 0, y: 10 } }[event.key];
             if (delta) { event.preventDefault(); event.stopPropagation(); run(resizeObject(board, item.id, corner, delta), commit); }
@@ -191,7 +204,7 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
         {(object.type === "sticky-note" || object.type === "shape") && <><label className="field">{object.type === "sticky-note" ? "Note color" : "Fill"}</label><div className="swatches">{colors.map((color) => <button key={color} aria-label={`Set color ${color}`} className={(object.type === "sticky-note" ? object.backgroundColor : object.fill) === color ? "picked" : ""} style={{ background: color }} onClick={() => update({ [object.type === "sticky-note" ? "backgroundColor" : "fill"]: color })} />)}</div></>}
         {object.type === "shape" && <><label className="field">Shape type<select aria-label="Shape type" value={object.shapeType} onChange={(event) => update({ shapeType: event.target.value })}><option value="rectangle">Rectangle</option><option value="ellipse">Ellipse</option></select></label><label className="field">Border width<input aria-label="Border width" type="number" min={0} max={32} value={object.borderWidth} onChange={(event) => update({ borderWidth: Number(event.target.value) })} /></label><label className="field">Border color<input type="color" value={object.borderColor} onChange={(event) => update({ borderColor: event.target.value })} /></label></>}
         {(object.type === "text" || object.type === "shape") && <><label className="field">Font size<input aria-label="Font size" type="number" value={object.fontSize} onChange={(event) => update({ fontSize: Number(event.target.value) })} /></label><label className="field">Text color<input type="color" value={object.textColor} onChange={(event) => update({ textColor: event.target.value })} /></label></>}
-        {object.type === "connector" && <label className="field">Arrow style<select value={object.arrowStyle} onChange={(event) => update({ arrowStyle: event.target.value })}><option value="none">No arrows</option><option value="end">End arrow</option><option value="both">Both ends</option></select></label>}
+        {object.type === "connector" && <><p>{connectorLabel(object, board.objects)}</p><label className="field">Line color<input aria-label="Line color" type="color" value={object.strokeColor} onChange={(event) => update({ strokeColor: event.target.value })} /></label><label className="field">Line width<input aria-label="Line width" type="number" min={0.1} max={32} step={0.5} value={object.strokeWidth} onChange={(event) => update({ strokeWidth: Number(event.target.value) })} /></label><label className="field">Arrow style<select aria-label="Arrow style" value={object.arrowStyle} onChange={(event) => update({ arrowStyle: event.target.value })}><option value="none">No arrows</option><option value="end">End arrow</option><option value="both">Both ends</option></select></label></>}
         <button className="button danger" onClick={remove}>Delete object</button>
       </div> : <div className="panel-content empty-inspector"><div className="selection-illustration"><span /><span /><i>↖</i></div><h2>A space for<br />your next big idea.</h2><p>Select anything on your board to edit its details.</p><div className="quick-start"><span className="eyebrow">MAKE YOUR FIRST MOVE</span><button onClick={() => { setTool("sticky-note"); }}>▧ Add a sticky note <span>N</span></button><button onClick={() => setTool("text")}>T Write something <span>T</span></button><button onClick={() => setTool("shape")}>□ Give it some shape <span>S</span></button></div><div className="quiet-note">A blank canvas.<br />Endless possibilities.</div></div>}</fieldset>
     </aside>
