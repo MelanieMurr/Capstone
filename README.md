@@ -2,7 +2,7 @@
 
 Hello! Welcome to my fancy capstone project!
 
-An intelligent collaborative workspace. This repository currently contains the installed technology stack and a minimal Next.js foundation; the proposal's application features are still to be implemented.
+An intelligent collaborative workspace. This repository includes an interactive canvas, authenticated Supabase accounts, a private board dashboard, cloud snapshot saving, and collaboration/AI prototypes.
 
 ## Frontend workspace
 
@@ -13,8 +13,8 @@ Use the hand tool to pan, zoom controls to change scale, and undo/redo to revisi
 edits. Keyboard shortcuts: V select, H pan, N note, T text, S shape, C connector,
 Delete remove, Escape cancel, and Ctrl/Cmd+Z (Shift to redo).
 
-Effect programs validate edits and handle local storage/export failures. Boards
-automatically save in this browser after edits; Export downloads a JSON copy.
+Effect programs validate edits and handle local storage/export failures. The public demo automatically saves in this browser after edits; Export downloads a JSON copy.
+Use My boards to sign in and manage boards saved to your account.
 Sharing and the assistant explain their pending backend connections. Local saving
 is not cloud persistence or multi-user synchronization. Width/height in the
 inspector control resizing; drawn selection corners are selection indicators.
@@ -56,11 +56,11 @@ npm run test:e2e:install
 npm run test:e2e
 ```
 
-Playwright downloads Chromium into `.playwright/` inside this project. The tests verify the app can render, concurrent Yjs edits converge, and Zod rejects malformed data; they do not cover the unimplemented MVP workflows.
+Playwright downloads Chromium into `.playwright/` inside this project. Tests cover canvas workflows, Yjs convergence, validation, authentication and board management. The live two-account Supabase test needs opt-in private fixtures; see [foundation setup and tests](docs/foundation.md). Stop the dev server before a production build and restart it afterward.
 
 ## Services to configure
 
-- Create a Supabase project for hosted PostgreSQL and authentication, and put its URL and publishable key in `.env.local`. Database tables, row-level security policies, and authentication flows still need implementation. The PostgreSQL client is installed; no local database server has been installed because the proposal specifies hosted PostgreSQL through Supabase.
+- The CoCanvas Supabase project is configured locally, with versioned schema migrations, row-level security and authentication implemented. For another environment, set its URL and publishable key in `.env.local` and follow [foundation setup](docs/foundation.md), including auth redirect URLs. No local PostgreSQL server is required.
 - Add `DATABASE_URL` for direct server-side PostgreSQL access if needed. Keep database credentials and `OPENAI_API_KEY` on the server; do not prefix them with `NEXT_PUBLIC_`.
 - The AI evaluation prototype uses the installed Codex CLI with ChatGPT sign-in. Run `codex login status` in WebStorm; no API key or separate API billing is required for this local provider. A hosted production AI integration remains separate work.
 - Implement and host the authenticated WebSocket service on a compatible platform, then set `NEXT_PUBLIC_WEBSOCKET_URL`. `y-websocket` supplies the client provider; installing packages does not start a collaboration server. The hosting provider is unspecified in the proposal.
@@ -69,6 +69,8 @@ Playwright downloads Chromium into `.playwright/` inside this project. The tests
 The installed Vercel CLI dependency tree reports security advisories that remain after compatible `npm audit fix` updates. Review `npm audit` before using the deployment CLI; npm's proposed forced fix changes the CLI's major version.
 
 ## Reference documentation
+
+- [Application foundation](docs/foundation.md): accounts, dashboard, schema, environment setup and isolated tests.
 
 - [Board-object data model](docs/board-object-model.md): types, validation, samples,
   connector behavior, and the proposed Yjs/storage mapping for Week 2 prototypes.

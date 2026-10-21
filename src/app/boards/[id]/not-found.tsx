@@ -1,0 +1,1 @@
+export default function Page() { return <main className="dashboard-page"><h1>Board not found</h1><p>This board doesn’t exist or you don’t have access.</p><a className="button" href="/dashboard">Back to your boards</a></main>; }

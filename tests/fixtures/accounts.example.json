@@ -1,0 +1,12 @@
+{
+  "alice": {
+    "id": "50000000-0000-4000-8000-000000000001",
+    "email": "replace-alice@example.test",
+    "password": "replace-with-dedicated-test-password"
+  },
+  "bob": {
+    "id": "50000000-0000-4000-8000-000000000002",
+    "email": "replace-bob@example.test",
+    "password": "replace-with-another-test-password"
+  }
+}

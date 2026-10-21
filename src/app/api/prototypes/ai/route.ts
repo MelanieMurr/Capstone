@@ -2,6 +2,8 @@ import { Effect } from "effect";
 import { requestSchema } from "../../../../lib/ai/evaluation";
 import { evaluateWithLocalCodex } from "../../../../lib/ai/local-codex";
 
+import { mutationOrigin } from "../../../../lib/foundation/http";
+
 export const runtime = "nodejs";
 let requests: number[] = [];
 let active = false;
@@ -9,8 +11,7 @@ export async function POST(request: Request) {
   if (process.env.NODE_ENV === "production") return Response.json({ error: "Local development evaluation only." }, { status: 404 });
   const url = new URL(request.url);
   if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) return Response.json({ error: "Localhost access only." }, { status: 403 });
-  const origin = request.headers.get("origin");
-  if ((origin && origin !== url.origin) || request.headers.get("sec-fetch-site") === "cross-site") return Response.json({ error: "Invalid origin." }, { status: 403 });
+  if (!mutationOrigin(request)) return Response.json({ error: "Invalid origin." }, { status: 403 });
   if (Number(request.headers.get("content-length") || 0) > 60000) return Response.json({ error: "Request too large." }, { status: 413 });
   const input = await Effect.runPromise(Effect.match(Effect.tryPromise({
     try: async () => {
