@@ -10,7 +10,9 @@ import { exportBoard, initialBoard, loadBoard, saveBoard, validateBoard } from "
 
 import { connectObjects, connectorLabel, createObject, deleteObject, objectLabel, patchObject, resizeObject } from "../lib/board/operations";
 import type { ResizeCorner } from "../lib/board/operations";
+import { cursorToBoard } from "../lib/collaboration/presence";
 import { panTo } from "../lib/board/viewport";
+import type { LiveBoard } from "../lib/collaboration/use-shared-board";
 const BoardCanvas = dynamic(() => import("./board-canvas"), { ssr: false });
 
 type Tool = "select" | "hand" | "sticky-note" | "text" | "shape" | "connector";
@@ -24,12 +26,13 @@ const tools: { id: Tool; icon: string; name: string; key: string }[] = [
 ];
 const colors = ["#fff0b5", "#d9ede5", "#eadff3", "#f7d6c7", "#d5e7f5", "#ffffff"];
 
-export default function Workspace({ initialDocument, identity, onDocumentChange, readOnly = false, remoteStatus }: {
+export default function Workspace({ initialDocument, identity, onDocumentChange, readOnly = false, remoteStatus, live }: {
   initialDocument?: BoardDocument;
   identity?: { id: string; title: string };
   onDocumentChange?: (document: BoardDocument) => void;
   readOnly?: boolean;
   remoteStatus?: string;
+  live?: LiveBoard;
 } = {}) {
   const [board, setBoard] = useState<BoardDocument>(initialDocument ?? initialBoard);
   const [ready, setReady] = useState(false);
@@ -56,15 +59,19 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
     setReady(true);
   }, []);
   useEffect(() => {
-    if (!ready || readOnly) return;
+    if (!ready || readOnly || live) return;
     const timer = setTimeout(() => { if (onDocumentChange) onDocumentChange(board); else run(saveBoard(board), () => setStatus("Saved on this device")); }, 400);
     return () => clearTimeout(timer);
-  }, [board, ready, readOnly, onDocumentChange]);
+  }, [board, ready, readOnly, onDocumentChange, live]);
+  useEffect(() => {
+    if (live?.document && !drag.current) setBoard(live.document);
+  }, [live?.document]);
 
   function commit(next: BoardDocument) {
     if (readOnly) return;
     run(validateBoard(next), (valid) => {
-      setPast((items) => [...items.slice(-49), board]); setFuture([]); setBoard(valid);
+      if (live) run(live.edit(board, valid), setBoard);
+      else { setPast((items) => [...items.slice(-49), board]); setFuture([]); setBoard(valid); }
     });
   }
   function update(patch: Record<string, unknown>) {
@@ -93,11 +100,13 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
   }
   function undo() {
     if (readOnly) return;
+    if (live) { live.undo(); return; }
     const previous = past.at(-1); if (!previous) return;
     setFuture((items) => [...items, board]); setPast((items) => items.slice(0, -1)); setBoard(previous); setSelected((id) => previous.objects.some((item) => item.id === id) ? id : null);
   }
   function redo() {
     if (readOnly) return;
+    if (live) { live.redo(); return; }
     const next = future.at(-1); if (!next) return;
     setPast((items) => [...items, board]); setFuture((items) => items.slice(0, -1)); setBoard(next);
   }
@@ -121,15 +130,21 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
       return;
     }
     event.currentTarget.setPointerCapture(event.pointerId);
+    if (tool !== "hand") live?.capture();
     drag.current = { id: tool === "hand" ? null : item?.id ?? null, clientX: event.clientX, clientY: event.clientY, x: tool === "hand" ? pan.x : item!.x, y: tool === "hand" ? pan.y : item!.y, before: board };
   }
   function startResize(event: ReactPointerEvent, item: BoardObject, corner: ResizeCorner) {
     event.stopPropagation(); event.preventDefault();
     if (readOnly || item.type === "connector" || tool === "hand") return;
     event.currentTarget.setPointerCapture(event.pointerId);
+    live?.capture();
     drag.current = { id: item.id, clientX: event.clientX, clientY: event.clientY, x: item.x, y: item.y, before: board, corner };
   }
   function move(event: ReactPointerEvent) {
+    if (live && area.current) {
+      const rect = area.current.getBoundingClientRect();
+      run(cursorToBoard({ x: event.clientX - rect.left, y: event.clientY - rect.top }, pan, zoom), live.cursor);
+    }
     const current = drag.current; if (!current) return;
     const dx = event.clientX - current.clientX, dy = event.clientY - current.clientY;
     if (!current.id) run(panTo({ ...pan, scale: zoom }, { x: current.x + dx, y: current.y + dy }), (value) => setPan({ x: value.x, y: value.y }));
@@ -137,13 +152,20 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
     else run(patchObject(current.before, current.id, { x: current.x + dx / zoom, y: current.y + dy / zoom }), setBoard);
   }
   function up() {
-    const before = drag.current?.before;
-    if (drag.current?.id && before && JSON.stringify(before) !== JSON.stringify(board)) { setPast((items) => [...items.slice(-49), before]); setFuture([]); }
+    const current = drag.current;
     drag.current = null;
+    if (current?.id) {
+      if (JSON.stringify(current.before) !== JSON.stringify(board)) {
+        if (live) run(live.edit(current.before, board), setBoard);
+        else { setPast((items) => [...items.slice(-49), current.before]); setFuture([]); }
+      } else if (live?.document) setBoard(live.document);
+      live?.capture();
+    } else if (live?.document) setBoard(live.document);
   }
   function cancelGesture() {
-    if (drag.current?.id) setBoard(drag.current.before);
+    if (drag.current?.id) setBoard(live?.document ?? drag.current.before);
     drag.current = null;
+    live?.capture();
   }
   useEffect(() => {
     function key(event: KeyboardEvent) {
@@ -161,7 +183,10 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
       <div className="brand"><span className="logo">c<span>•</span></span><h1>CoCanvas</h1></div>
       <span className="header-divider" />
       <div className="board-title"><strong>{identity?.title ?? "First things first"}</strong><span>Personal workspace <span className="private">· Private board</span></span></div>
-      <div className="header-actions"><a className="local-status" href="/dashboard">My boards ↗</a><a className="avatar" aria-label="Your account and boards" href="/dashboard">M</a><button className="button" onClick={() => run(exportBoard(board), () => setStatus("Board exported"))}>↗ <span>Export</span></button><button className="button primary" onClick={() => setDialog(true)}>Share board</button></div>
+      <div className="header-actions">{live && <div className="collaborators" role="list" aria-label="Active collaborators">
+        {live.collaborators.map((person) => <span role="listitem" className="collaborator-avatar" key={person.id} title={person.name} aria-label={person.name} style={{ background: person.color }}>{person.name.slice(0, 1).toUpperCase()}</span>)}
+        <span className="collaborator-count">{live.connected ? live.collaborators.length + 1 : 0} online</span>
+      </div>}<a className="local-status" href="/dashboard">My boards ↗</a><a className="avatar" aria-label="Your account and boards" href="/dashboard">M</a><button className="button" onClick={() => run(exportBoard(board), () => setStatus("Board exported"))}>↗ <span>Export</span></button><button className="button primary" onClick={() => setDialog(true)}>Share board</button></div>
     </header>
     <aside className="sidebar">
       <div className="workspace-label">YOUR WORKSPACE</div>
@@ -175,9 +200,15 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
       <div className="sidebar-bottom"><div className="tip-icon">✦</div><strong>A little room for possibility</strong><p>Start with a thought.<br />Make something of it.</p><button className="text-button" onClick={() => setPanel("ai")}>Explore your ideas <span>→</span></button></div>
       <div className="sidebar-footer"><span className="avatar tiny">M</span><div>My workspace<small>{identity ? readOnly ? "View-only access" : "Cloud saved" : "Local mode"}</small></div></div>
     </aside>
-    <section className="canvas-area" ref={area} aria-label="Board canvas" onPointerDown={(event) => down(event)} onPointerMove={move} onPointerUp={up} onPointerCancel={cancelGesture} style={{ cursor: tool === "hand" ? "grab" : tool === "select" ? "default" : "crosshair" }}>
+    <section className="canvas-area" ref={area} aria-label="Board canvas" onPointerDown={(event) => down(event)} onPointerMove={move} onPointerLeave={() => live?.cursor(null)} onPointerUp={up} onPointerCancel={cancelGesture} style={{ cursor: tool === "hand" ? "grab" : tool === "select" ? "default" : "crosshair" }}>
       <div className="canvas-breadcrumb">WORKSPACE <span>/</span> <strong>{identity?.title ?? "First things first"}</strong></div>
       <BoardCanvas board={board} pan={pan} zoom={zoom} selected={selected} onError={setStatus} />
+      {live && <div className="collaborator-cursors" aria-label="Collaborator cursors">{live.collaborators.filter((person) => person.cursor).map((person) => <div key={person.id}
+        className="collaborator-cursor" data-testid="collaborator-cursor" data-peer-id={person.id} aria-label={`${person.name}'s cursor`}
+        style={{ left: pan.x + person.cursor!.x * zoom, top: pan.y + person.cursor!.y * zoom, color: person.color }}>
+        <svg width="18" height="22" viewBox="0 0 18 22" aria-hidden="true"><path d="M1 1L16 13L9 14L6 21Z" fill="currentColor" stroke="white" strokeWidth="1.5" /></svg>
+        <span style={{ background: person.color }}>{person.name}</span>
+      </div>)}</div>}
       <div className="canvas-world" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}>
         <svg className="connections" width="1" height="1" overflow="visible" aria-label="Board connectors">{board.objects.filter((item) => item.type === "connector").map((item) => {
           const start = resolveEndpoint(item.start, board.objects), end = resolveEndpoint(item.end, board.objects); if (!start || !end) return null;
@@ -194,7 +225,7 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
         </div>)}
       </div>
       <div className="canvas-hint">{tool === "connector" ? "Click two objects to connect them" : tool === "hand" ? "Drag anywhere to explore your board" : tool === "select" ? "Select an object to make it yours" : "Click anywhere to add your idea"}</div>
-      <div className="toolbar" onPointerDown={(event) => event.stopPropagation()}>{tools.map((entry) => <button key={entry.id} className={tool === entry.id ? "tool active" : "tool"} disabled={readOnly && entry.id !== "select" && entry.id !== "hand"} aria-label={entry.name} aria-pressed={tool === entry.id} title={`${entry.name} (${entry.key})`} onClick={() => { setTool(entry.id); setConnectFrom(null); }}><span>{entry.icon}</span><small>{entry.key}</small></button>)}<span className="toolbar-divider" /><button className="tool" aria-label="Undo" disabled={readOnly || !past.length} onClick={undo}>↶</button><button className="tool" aria-label="Redo" disabled={readOnly || !future.length} onClick={redo}>↷</button></div>
+      <div className="toolbar" onPointerDown={(event) => event.stopPropagation()}>{tools.map((entry) => <button key={entry.id} className={tool === entry.id ? "tool active" : "tool"} disabled={readOnly && entry.id !== "select" && entry.id !== "hand"} aria-label={entry.name} aria-pressed={tool === entry.id} title={`${entry.name} (${entry.key})`} onClick={() => { setTool(entry.id); setConnectFrom(null); }}><span>{entry.icon}</span><small>{entry.key}</small></button>)}<span className="toolbar-divider" /><button className="tool" aria-label="Undo" disabled={readOnly || (live ? !live.canUndo : !past.length)} onClick={undo}>↶</button><button className="tool" aria-label="Redo" disabled={readOnly || (live ? !live.canRedo : !future.length)} onClick={redo}>↷</button></div>
       <div className="zoom-controls" onPointerDown={(event) => event.stopPropagation()}><button aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(0.25, value - 0.1))}>−</button><button aria-label="Reset zoom" onClick={() => { setZoom(0.85); setPan({ x: 35, y: 25 }); }}>{Math.round(zoom * 100)}%</button><button aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(2, value + 0.1))}>+</button></div>
     </section>
     <aside className="inspector"><fieldset className="readonly-fields" disabled={readOnly}><div className="panel-tabs"><button className={panel === "properties" ? "active" : ""} onClick={() => setPanel("properties")}>Design</button><button className={panel === "ai" ? "active" : ""} onClick={() => setPanel("ai")}>✦ Assistant</button></div>
@@ -209,6 +240,6 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
       </div> : <div className="panel-content empty-inspector"><div className="selection-illustration"><span /><span /><i>↖</i></div><h2>A space for<br />your next big idea.</h2><p>Select anything on your board to edit its details.</p><div className="quick-start"><span className="eyebrow">MAKE YOUR FIRST MOVE</span><button onClick={() => { setTool("sticky-note"); }}>▧ Add a sticky note <span>N</span></button><button onClick={() => setTool("text")}>T Write something <span>T</span></button><button onClick={() => setTool("shape")}>□ Give it some shape <span>S</span></button></div><div className="quiet-note">A blank canvas.<br />Endless possibilities.</div></div>}</fieldset>
     </aside>
     <footer className="statusbar"><span role="status"><i />{[remoteStatus, status].filter(Boolean).join(" · ")}</span><span>{board.objects.length} objects <span className="footer-dot">·</span> Made for thinking together</span></footer>
-    {dialog && <div className="modal-backdrop" onClick={() => setDialog(false)}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="share-title" onClick={(event) => event.stopPropagation()}><button className="modal-close" aria-label="Close sharing dialog" autoFocus onClick={() => setDialog(false)}>×</button><span className="eyebrow">THINKING TOGETHER</span><h2 id="share-title">Your ideas deserve company.</h2><p>{identity ? "This board is saved to your account. Invitation management and live collaboration will be connected in a later milestone." : "This demo is saved on this device. Sign in through My boards to create private cloud-saved boards."}</p><button className="button primary" onClick={() => run(exportBoard(board), () => { setStatus("Board exported"); setDialog(false); })}>Export a board copy</button></section></div>}
+    {dialog && <div className="modal-backdrop" onClick={() => setDialog(false)}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="share-title" onClick={(event) => event.stopPropagation()}><button className="modal-close" aria-label="Close sharing dialog" autoFocus onClick={() => setDialog(false)}>×</button><span className="eyebrow">THINKING TOGETHER</span><h2 id="share-title">Your ideas deserve company.</h2><p>{identity ? "Live collaboration is enabled for existing board members. Invitation management will be connected in a later milestone." : "This demo is saved on this device. Sign in through My boards to create private cloud-saved boards."}</p><button className="button primary" onClick={() => run(exportBoard(board), () => { setStatus("Board exported"); setDialog(false); })}>Export a board copy</button></section></div>}
   </main>;
 }

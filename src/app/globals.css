@@ -17,3 +17,7 @@
 .canvas-world .handle:focus-visible { outline:3px solid #28785f; outline-offset:3px; }
 .canvas-world .canvas-object.text { overflow:visible; }
 .canvas-world .canvas-object:focus-visible { outline:2px solid #28785f; outline-offset:3px; }
+
+/* Presence uses world coordinates but fixed-size, non-interactive screen overlays. */
+.collaborators{display:flex;align-items:center;gap:5px}.collaborator-avatar{display:inline-flex;align-items:center;justify-content:center;width:27px;height:27px;border:2px solid white;border-radius:50%;color:white;font-size:11px;font-weight:700}.collaborator-count{font-size:11px;color:var(--muted);white-space:nowrap;margin-left:3px}.collaborator-cursors{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:6}.collaborator-cursor{position:absolute;display:flex;align-items:flex-start;gap:2px;pointer-events:none}.collaborator-cursor>span{color:white;border-radius:4px;padding:3px 7px;white-space:nowrap;font-size:10px;line-height:16px;margin-top:16px;max-width:180px;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:1000px){.collaborator-count{display:none}.collaborator-avatar{width:22px;height:22px}}
