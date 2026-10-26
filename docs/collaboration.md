@@ -40,10 +40,12 @@ changes before reloading. Automatic reconnection is a separate backlog ticket.
 - `scripts/board-sync.ts` verifies the token with Supabase Auth, checks ownership
   or collaborator permission under RLS, and assigns the connection to that board.
   A room is never authorization by itself. No service-role key is used.
-- The first authorized join seeds the server's Y.Doc from the stored snapshot.
-  Later joins receive that same shared document. The server serializes room
-  commands, changes only affected fields, saves the next snapshot with the
-  existing revision condition, then broadcasts an incremental Yjs update.
+- The first authorized join restores the server's Y.Doc from `yjs_state bytea`
+  with `Y.applyUpdate`. Only legacy rows with NULL binary state are seeded from
+  their JSON snapshot. Later joins receive that same shared document. The server
+  serializes room commands, changes only affected fields, and saves the full
+  `Y.encodeStateAsUpdate` checkpoint and validated snapshot together in one
+  revision-checked UPDATE before broadcasting an incremental Yjs update.
 - `use-shared-board.ts` maintains an accepted browser Y.Doc plus queued optimistic
   edits. It acknowledges one request at a time and reapplies remaining local
   edits over incoming accepted state, so remote messages do not discard typing.
@@ -171,8 +173,10 @@ package versions were not changed for these tickets.
 
 ## Remaining scope
 
-One loopback server owns the in-memory rooms. JSON snapshots persist current
-contents, while CRDT history, room state and undo stacks are not durable. Rooms
+One loopback server owns the in-memory rooms. Binary Yjs checkpoints preserve
+shared struct identities, deleted state and the document state vector across
+restarts. Durable documents use `gc: false` to retain deleted struct contents.
+Presence and per-connection UndoManager stacks are not persisted. Rooms
 remain in memory until shutdown. Multi-instance room coordination, idle eviction,
 automatic reconnection/token refresh, presence across server processes,
 character-level Y.Text editing, and an invitation UI remain separate milestones.
@@ -182,3 +186,42 @@ chunking. Authorization rechecks favor clarity over high-volume optimization.
 For deployment, host the socket process on a platform supporting long-lived
 WebSockets, configure an exact allowed app origin, and use HTTPS/WSS. A localhost
 URL or a standard serverless Next route is not a deployed WebSocket host.
+
+## Binary persistence verification
+
+`src/lib/collaboration/persistence.ts` validates PostgreSQL's bytea hex transport,
+encodes full Yjs checkpoints, binds each document to its board ID/schema version,
+and restores binary before looking at JSON. The database stores bytes; the Data
+API's `\x...` string is its transport representation. The existing `yjs_state`
+column and RLS/grants already support this; no schema migration is needed.
+
+Binary is authoritative. The companion snapshot remains useful for inspection
+and export, but stale/absent JSON does not replace valid binary. Invalid,
+truncated, wrong-board, unsupported-version or incomplete Yjs checkpoints fail
+loading instead of silently reseeding from JSON. Failed saves stop the room
+before its edit is acknowledged. Existing snapshot-only rows upgrade on their
+next successful save. The snapshot PUT endpoint also updates the existing Y.Doc
+and writes both representations atomically, preserving prior struct identities.
+Binary checkpoints remain subject to the existing 10 MiB database limit. Saving
+binary does not itself add an offline editor, automatic reconnect, persistent
+undo stacks, or a version-history UI.
+
+Run the focused real-database restart check with dedicated account fixtures:
+
+```sh
+COCANVAS_TEST_FIXTURES=/absolute/private/accounts.json npm run test:persistence
+```
+
+It starts a room server on an OS-assigned port, edits a board containing notes,
+text, both shape variants and a connector, reads/decode-checks the actual
+Supabase bytea value, shuts the server down, removes only the test board's JSON
+snapshot, and starts a fresh server. It asserts identical board content and
+Yjs state vectors, then verifies a second account can continue editing. Finally
+it deletes the temporary board/membership. No service-role key is used.
+
+The unit/protocol suite additionally covers corrupted checkpoints, size limits,
+legacy conversion, repeated restoration, deletion history against an old replica,
+atomic document-API writes, server restart, and save/load failures. The live
+Supabase restart test passed on October 26, 2026; all 93 unit/protocol checks
+and all five focused authenticated browser regressions passed after this change.
+The production Turbopack build passed as well.

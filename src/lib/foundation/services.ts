@@ -2,7 +2,10 @@ import { Effect } from "effect";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AppError, boardInputSchema, boardRowSchema, idSchema, loginSchema, signupSchema } from "./contracts";
+import { persistBoard, restoreBoard } from "../collaboration/persistence";
+import { readBoard, writeBoard } from "../collaboration/shared-board";
 import { boardDocumentSchema } from "../board/model";
+import type { BoardDocument } from "../board/model";
 
 const fail = (cause: unknown) => cause instanceof AppError ? cause : new AppError("The request could not be completed. Please try again.", 503);
 export const authenticated = (client: SupabaseClient) => Effect.tryPromise({
@@ -58,9 +61,11 @@ export const getBoard = (client: SupabaseClient, id: string) => Effect.gen(funct
     if (error) throw error;
     if (!board) throw new AppError("Board not found or access denied.", 404);
     const parsed = boardRowSchema.parse(board);
-    const { data: doc, error: docError } = await client.from("board_documents").select("snapshot,revision").eq("board_id", id).single();
+    const { data: doc, error: docError } = await client.from("board_documents").select("snapshot,yjs_state,revision").eq("board_id", id).single();
     if (docError) throw docError;
-    const document = boardDocumentSchema.parse(doc.snapshot ?? { schemaVersion: 1, boardId: id, objects: [] });
+    const restored = await Effect.runPromise(restoreBoard(id, doc.snapshot, doc.yjs_state));
+    let document: BoardDocument;
+    try { document = await Effect.runPromise(readBoard(restored, id)); } finally { restored.destroy(); }
     let canEdit = parsed.owner_id === user.id;
     if (!canEdit) {
       const { data: membership, error: memberError } = await client.from("board_collaborators").select("permission").eq("board_id", id).eq("user_id", user.id).maybeSingle();
@@ -96,7 +101,16 @@ export const saveDocument = (client: SupabaseClient, id: string, input: unknown)
   return yield* Effect.tryPromise({ try: async () => {
     const parsed = z.strictObject({ document: boardDocumentSchema, revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER - 1) }).safeParse(input);
     if (!idSchema.safeParse(id).success || !parsed.success || parsed.data.document.boardId !== id) throw new AppError("Invalid board document.", 400);
-    const { data, error } = await client.from("board_documents").update({ snapshot: parsed.data.document, revision: parsed.data.revision + 1 }).eq("board_id", id).eq("revision", parsed.data.revision).select("revision");
+    const { data: previous, error: loadError } = await client.from("board_documents").select("snapshot,yjs_state,revision").eq("board_id", id).maybeSingle();
+    if (loadError) throw loadError;
+    if (!previous || previous.revision !== parsed.data.revision) throw new AppError("The board changed elsewhere or access was removed. Reload before saving again.", 409);
+    const restored = await Effect.runPromise(restoreBoard(id, previous.snapshot, previous.yjs_state));
+    let stored: { snapshot: BoardDocument; yjsState: string };
+    try {
+      await Effect.runPromise(writeBoard(restored, parsed.data.document, "snapshot-import"));
+      stored = await Effect.runPromise(persistBoard(restored, id));
+    } finally { restored.destroy(); }
+    const { data, error } = await client.from("board_documents").update({ snapshot: stored.snapshot, yjs_state: stored.yjsState, schema_version: 1, revision: parsed.data.revision + 1 }).eq("board_id", id).eq("revision", parsed.data.revision).select("revision");
     if (error?.code === "42501") throw new AppError("You cannot edit this board.", 403);
     if (error) throw error;
     if (!data?.length) throw new AppError("The board changed elsewhere or access was removed. Reload before saving again.", 409);

@@ -13,20 +13,21 @@ const empty = (boardId: string) => boardDocumentSchema.parse({ schemaVersion: 1,
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0)) await close(); });
 async function setup() {
-  const stored = new Map([a, b].map((id) => [id, { snapshot: empty(id), revision: 0 }]));
-  const service = startSyncServer({
+  const stored = new Map([a, b].map((id) => [id, { snapshot: empty(id), revision: 0, yjsState: null as string | null }]));
+  const backend: Parameters<typeof startSyncServer>[0] = {
     async access(token, id) {
       if (!["alice", "bob", "viewer"].includes(token) || !stored.has(id) || (id === b && token !== "alice")) throw new Error("Denied");
       return { ...stored.get(id)!, canEdit: token !== "viewer", user: { id: token === "alice" ? a : b, name: token } };
     },
-    async save(_token, id, snapshot, revision) {
+    async save(_token, id, snapshot, revision, yjsState) {
       if (stored.get(id)?.revision !== revision) throw new Error("Conflict");
-      stored.set(id, { snapshot, revision: revision + 1 });
+      stored.set(id, { snapshot, revision: revision + 1, yjsState });
     },
-  }, 0);
-  cleanup.push(service.close);
+  };
+  let service = startSyncServer(backend, 0);
+  cleanup.push(() => service.close());
   if (!service.http.listening) await once(service.http, "listening");
-  const address = service.http.address(); if (!address || typeof address === "string") throw new Error("No port");
+  let address = service.http.address(); if (!address || typeof address === "string") throw new Error("No port");
   async function join(token: string, boardId: string) {
     const socket = new WebSocket(`ws://127.0.0.1:${address && typeof address !== "string" ? address.port : 0}`, { origin: "http://127.0.0.1:3000" });
     const doc = new Y.Doc(); const messages: any[] = []; // Protocol fixture deliberately inspects raw frames.
@@ -45,7 +46,11 @@ async function setup() {
       return wait((frame) => frame.requestId === requestId);
     } };
   }
-  return { join, stored };
+  return { join, stored, backend, restart: async () => {
+    await service.close(); service = startSyncServer(backend, 0);
+    if (!service.http.listening) await once(service.http, "listening");
+    address = service.http.address();
+  } };
 }
 describe("authenticated board-room protocol", () => {
   it("syncs create/edit/move/resize/delete in both directions and isolates boards", async () => {
@@ -103,6 +108,31 @@ describe("authenticated board-room protocol", () => {
     expect(stored.get(a)?.revision).toBe(0); // Presence never writes board snapshots.
     bob.socket.close();
     await alice.wait(() => alice.messages.filter((f) => f.type === "presence").at(-1)?.peers.length === 0);
+  });
+  it("restores a fresh server room from binary after shutdown without relying on a snapshot", async () => {
+    const { join, stored, restart } = await setup(); const alice = await join("alice", a);
+    await alice.wait((f) => f.type === "state");
+    const note = boardDocumentSchema.parse({ schemaVersion: 1, boardId: a, objects: [{ id: objectId, type: "sticky-note", text: "Survives server shutdown" }] }).objects[0]!;
+    await alice.command("edit", [{ kind: "create", object: note }]);
+    const vector = Y.encodeStateVector(alice.doc);
+    expect(stored.get(a)?.yjsState).toMatch(/^\\x[0-9a-f]+$/);
+    stored.get(a)!.snapshot = empty(a); // Prove restoration is not a new JSON seed.
+    await restart(); const bob = await join("bob", a); await bob.wait((f) => f.type === "state");
+    expect(bob.board().objects[0]).toMatchObject(note); expect(Y.encodeStateVector(bob.doc)).toEqual(vector);
+    await bob.command("edit", [{ kind: "patch", id: objectId, patch: { text: "Editing resumed" } }]);
+    expect(stored.get(a)?.snapshot.objects[0]).toMatchObject({ text: "Editing resumed" });
+  });
+  it("reports storage failure without broadcasting an unsaved edit", async () => {
+    const { join, backend, stored } = await setup(); const alice = await join("alice", a);
+    await alice.wait((f) => f.type === "state"); backend.save = async () => { throw new Error("Unavailable database"); };
+    alice.socket.send(JSON.stringify({ type: "edit", requestId: crypto.randomUUID(), changes: [] }));
+    await alice.wait((f) => f.type === "error");
+    expect(stored.get(a)?.revision).toBe(0); expect(alice.messages.filter((f) => f.type === "state")).toHaveLength(1);
+  });
+  it("reports a corrupt binary load instead of replacing history from its snapshot", async () => {
+    const { join, stored } = await setup(); stored.get(a)!.yjsState = "\\xff";
+    const alice = await join("alice", a); await alice.wait((f) => f.type === "error");
+    expect(alice.messages.some((f) => f.type === "state")).toBe(false); expect(stored.get(a)?.revision).toBe(0);
   });
   it("rejects invalid tokens before sending board data", async () => {
     const { join } = await setup(); const bad = await join("invalid", a);

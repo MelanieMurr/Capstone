@@ -66,9 +66,13 @@ export const projectChanges = (board: BoardDocument, input: Change[]) => safe(()
 
 export const writeBoard = (doc: Y.Doc, next: BoardDocument, origin: unknown) => safe(() => {
   boardDocumentSchema.parse(next);
+  const metadata = doc.getMap("board");
+  if (metadata.has("boardId") && metadata.get("boardId") !== next.boardId) throw new Error("Board mismatch.");
   const objects = doc.getMap<Y.Map<unknown>>("objects");
   const ids = new Set(next.objects.map((o) => o.id));
   doc.transact(() => {
+    if (metadata.get("boardId") !== next.boardId) metadata.set("boardId", next.boardId);
+    if (metadata.get("schemaVersion") !== 1) metadata.set("schemaVersion", 1);
     for (const id of objects.keys()) if (!ids.has(id)) objects.delete(id);
     for (const object of next.objects) {
       let map = objects.get(object.id);

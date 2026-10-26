@@ -3,6 +3,8 @@ import { Effect } from "effect";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { authenticate, authenticated, createBoard, modifyBoard, saveDocument } from "./services";
 import { mutationOrigin } from "./http";
+import { restoreBoard } from "../collaboration/persistence";
+import { readBoard } from "../collaboration/shared-board";
 import { safeNext } from "./contracts";
 const owner = "50000000-0000-4000-8000-000000000001";
 const other = "50000000-0000-4000-8000-000000000002";
@@ -63,6 +65,20 @@ describe("authentication and dashboard domain", () => {
     const { db, supabase } = client();
     await expect(result(createBoard(supabase, { title: "   " }))).rejects.toThrow("board title");
     expect(db.rpc).not.toHaveBeenCalled();
+  });
+  it("saves a binary checkpoint and its matching snapshot in one revision-checked update", async () => {
+    const { db, supabase } = client();
+    const document = { boardId, schemaVersion: 1 as const, objects: [] };
+    const load = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), maybeSingle: vi.fn().mockResolvedValue({ data: { snapshot: document, yjs_state: null, revision: 4 }, error: null }) };
+    const update = { update: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), select: vi.fn().mockResolvedValue({ data: [{ revision: 5 }], error: null }) };
+    db.from.mockReturnValueOnce(load).mockReturnValueOnce(update);
+    expect(await result(saveDocument(supabase, boardId, { document, revision: 4 }))).toEqual({ revision: 5 });
+    const written = update.update.mock.calls[0]![0];
+    expect(written).toMatchObject({ snapshot: document, revision: 5, schema_version: 1 });
+    expect(written.yjs_state).toMatch(/^\\x[0-9a-f]+$/);
+    const doc = await result(restoreBoard(boardId, null, written.yjs_state));
+    expect(await result(readBoard(doc, boardId))).toEqual(document); doc.destroy();
+    expect(update.eq).toHaveBeenCalledWith("revision", 4);
   });
   it("rejects documents with a different board identity", async () => {
     const { db, supabase } = client();

@@ -84,14 +84,15 @@ The client sends its current revision; concurrent stale writes return 409 instea
 of overwriting another save. An autosave failure remains visible and asks the
 user to export a copy before reloading.
 
-Yjs remains the planned multi-user document format: one Y.Doc per board, an objects
-map keyed by object UUID, and nested maps for per-field merges. `yjs_state bytea`
-will hold `Y.encodeStateAsUpdate(doc)`; `snapshot jsonb` is the validated inspection,
-export and recovery view. The current authenticated canvas persists JSON snapshots
-with revision checks. It does not write Yjs bytes or connect private boards to the
-unauthenticated prototype WebSocket. An authenticated collaboration server must
-later authorize room access, load Yjs state, merge updates and serialize durable
-writes. Invitations have schema/access rules; sending/accepting invitation UI is
+Private boards use one authenticated Y.Doc per room, an objects map keyed by
+object UUID, and nested maps for per-field merges. `yjs_state bytea` stores a
+full `Y.encodeStateAsUpdate(doc)` checkpoint; `snapshot jsonb` is its validated
+inspection/export view. Both are saved atomically under the same revision check.
+Loading applies the binary state first, retaining Yjs struct identities across
+restarts. Only legacy NULL-binary rows are seeded from JSON and upgraded on save.
+Corrupt binary fails visibly instead of silently falling back. See
+[collaboration and binary persistence](collaboration.md) for verification.
+Invitations have schema/access rules; sending/accepting invitation UI is
 future work. Do not treat the prototype sync server as production sharing.
 
 The migrations were applied to CoCanvas (`ybgcdvkzwkgwrhgzcwvn`) and their local

@@ -7,16 +7,16 @@ import { Effect } from "effect";
 import * as Y from "yjs";
 import { z } from "zod";
 import { applyChanges, changeSchema, readBoard, writeBoard } from "../src/lib/collaboration/shared-board.ts";
-import { boardDocumentSchema } from "../src/lib/board/model.ts";
 import type { BoardDocument } from "../src/lib/board/model.ts";
 
+import { persistBoard, restoreBoard } from "../src/lib/collaboration/persistence.ts";
 import { collaboratorColor, cursorSchema } from "../src/lib/collaboration/presence.ts";
 import type { Collaborator } from "../src/lib/collaboration/presence.ts";
 
-type Access = { snapshot: BoardDocument; revision: number; canEdit: boolean; user: { id: string; name: string } };
+type Access = { snapshot: unknown; revision: number; yjsState: string | null; canEdit: boolean; user: { id: string; name: string } };
 type Backend = {
   access(token: string, boardId: string): Promise<Access>;
-  save(token: string, boardId: string, snapshot: BoardDocument, revision: number): Promise<void>;
+  save(token: string, boardId: string, snapshot: BoardDocument, revision: number, yjsState: string): Promise<void>;
 };
 const requestSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("join"), boardId: z.uuid(), token: z.string().min(1) }),
@@ -94,11 +94,11 @@ export function startSyncServer(backend: Backend, port = 1235, origins = ["http:
           const access = await backend.access(frame.token, frame.boardId);
           if (!rooms.has(frame.boardId)) {
             const loading = (async () => {
-              const doc = new Y.Doc();
-              await Effect.runPromise(writeBoard(doc, access.snapshot, "seed"));
+              const doc = await Effect.runPromise(restoreBoard(frame.boardId, access.snapshot, access.yjsState));
               return { doc, revision: access.revision, peers: new Set<Peer>(), queue: Promise.resolve(), failed: false };
             })();
             rooms.set(frame.boardId, loading);
+            void loading.catch(() => { if (rooms.get(frame.boardId) === loading) rooms.delete(frame.boardId); });
           }
           const room = await rooms.get(frame.boardId)!;
           if (room.failed) throw new Error("Room unavailable; reload.");
@@ -140,7 +140,8 @@ export function startSyncServer(backend: Backend, port = 1235, origins = ["http:
           // Undo/concurrent deletion can leave a dangling attachment; remove it.
           const snapshot = await Effect.runPromise(readBoard(current.room.doc, current.boardId));
           await Effect.runPromise(writeBoard(current.room.doc, snapshot, "reconcile"));
-          await backend.save(current.token, current.boardId, snapshot, current.room.revision);
+          const stored = await Effect.runPromise(persistBoard(current.room.doc, current.boardId));
+          await backend.save(current.token, current.boardId, stored.snapshot, current.room.revision, stored.yjsState);
           current.room.revision += 1;
           await broadcast(current.room, Y.encodeStateAsUpdate(current.room.doc, vector), current, frame.requestId);
         }, () => failRoom(current.boardId, current.room));
@@ -166,7 +167,7 @@ export function startSyncServer(backend: Backend, port = 1235, origins = ["http:
   }) };
 }
 
-function supabaseBackend(): Backend {
+export function supabaseBackend(): Backend {
   const url = z.url().parse(process.env.NEXT_PUBLIC_SUPABASE_URL);
   const key = z.string().min(1).parse(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
   const client = (token: string) => createClient(url, key, { global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false, autoRefreshToken: false } });
@@ -183,13 +184,13 @@ function supabaseBackend(): Backend {
         if (memberError) throw memberError;
         canEdit = member?.permission === "editor";
       }
-      const { data: stored, error: storedError } = await db.from("board_documents").select("snapshot,revision").eq("board_id", boardId).single();
+      const { data: stored, error: storedError } = await db.from("board_documents").select("snapshot,yjs_state,revision").eq("board_id", boardId).single();
       if (storedError || !stored) throw new Error("Board load failed.");
-      return { snapshot: boardDocumentSchema.parse(stored.snapshot ?? { schemaVersion: 1, boardId, objects: [] }), revision: Number(stored.revision), canEdit,
+      return { snapshot: stored.snapshot, revision: Number(stored.revision), yjsState: stored.yjs_state, canEdit,
         user: { id: auth.user.id, name: String(auth.user.user_metadata?.display_name || auth.user.email?.split("@")[0] || "Collaborator").slice(0, 40) } };
     },
-    async save(token, boardId, snapshot, revision) {
-      const { data, error } = await client(token).from("board_documents").update({ snapshot, revision: revision + 1 }).eq("board_id", boardId).eq("revision", revision).select("revision");
+    async save(token, boardId, snapshot, revision, yjsState) {
+      const { data, error } = await client(token).from("board_documents").update({ snapshot, yjs_state: yjsState, schema_version: 1, revision: revision + 1 }).eq("board_id", boardId).eq("revision", revision).select("revision");
       if (error || data?.length !== 1) throw new Error("Shared save conflicted or failed.");
     },
   };
