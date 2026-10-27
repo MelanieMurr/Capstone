@@ -92,7 +92,10 @@ Loading applies the binary state first, retaining Yjs struct identities across
 restarts. Only legacy NULL-binary rows are seeded from JSON and upgraded on save.
 Corrupt binary fails visibly instead of silently falling back. See
 [collaboration and binary persistence](collaboration.md) for verification.
-Invitations have schema/access rules; sending/accepting invitation UI is
+Registered users can receive owner-granted viewer/editor access through Share.
+The exact-email lookup is owner-checked in the private database helper as well as
+the server endpoint. See `docs/collaboration.md`. Invitations have schema/access
+rules; sending/accepting email invitation UI is
 future work. Do not treat the prototype sync server as production sharing.
 
 The migrations were applied to CoCanvas (`ybgcdvkzwkgwrhgzcwvn`) and their local

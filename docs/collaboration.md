@@ -26,9 +26,10 @@ Restart Next after changing a public environment variable. Exact permitted local
 origins are `http://127.0.0.1:3000` and `http://localhost:3000`.
 
 Sign in and open a board from the dashboard. Editing waits for the room's initial
-state and verified permission. On a failed connection or save, editing pauses,
-the status explains the failure, and Export remains available. Export unsaved
-changes before reloading. Automatic reconnection is a separate backlog ticket.
+state and verified permission. On a failed connection, editing pauses and the status shows automatic retries.
+Each retry requests a fresh Supabase token and joins with the same tab session ID.
+Export remains available. Fatal permission, validation or storage failures keep
+unsent drafts visible for export rather than silently dropping them.
 
 ## Architecture
 
@@ -56,7 +57,7 @@ changes before reloading. Automatic reconnection is a separate backlog ticket.
   preview locally and commit their changed geometry once at release.
 - Selective Yjs undo tracks each connection's origin, rather than restoring old
   whole-board React snapshots containing other users' work. A capture boundary
-  makes a completed drag/resize its own undo step. Undo history is per connection.
+  makes a completed drag/resize its own undo step. Undo history is per tab session and survives a transport reconnect while the room server remains running.
 
 The wire protocol is explicit JSON commands and base64-encoded Yjs updates. It is
 not the stock `y-websocket` provider protocol. Credentials travel in the initial
@@ -178,8 +179,9 @@ shared struct identities, deleted state and the document state vector across
 restarts. Durable documents use `gc: false` to retain deleted struct contents.
 Presence and per-connection UndoManager stacks are not persisted. Rooms
 remain in memory until shutdown. Multi-instance room coordination, idle eviction,
-automatic reconnection/token refresh, presence across server processes,
-character-level Y.Text editing, and an invitation UI remain separate milestones.
+presence across server processes, character-level Y.Text editing, and email
+invitation workflows remain separate milestones. Registered-user access grants
+and automatic transport recovery are implemented below.
 Incoming command payloads are capped at 256 KiB; large imported batches need
 chunking. Authorization rechecks favor clarity over high-volume optimization.
 
@@ -203,8 +205,8 @@ before its edit is acknowledged. Existing snapshot-only rows upgrade on their
 next successful save. The snapshot PUT endpoint also updates the existing Y.Doc
 and writes both representations atomically, preserving prior struct identities.
 Binary checkpoints remain subject to the existing 10 MiB database limit. Saving
-binary does not itself add an offline editor, automatic reconnect, persistent
-undo stacks, or a version-history UI.
+binary does not itself add an offline editor, persistent undo stacks, or a
+version-history UI. Transport reconnection is implemented separately below.
 
 Run the focused real-database restart check with dedicated account fixtures:
 
@@ -225,3 +227,90 @@ atomic document-API writes, server restart, and save/load failures. The live
 Supabase restart test passed on October 26, 2026; all 93 unit/protocol checks
 and all five focused authenticated browser regressions passed after this change.
 The production Turbopack build passed as well.
+
+## Registered-user access grants
+
+The board's Share dialog accepts an existing user's email and a viewer/editor
+permission. Only the owner sees the grant form. The Next.js endpoint at
+`POST /api/boards/[id]/collaborators` validates the request with Zod inside Effect,
+verifies the signed-in user and checks board ownership before calling the RPC.
+
+Migration `20261026225424_grant_registered_board_access.sql` adds a public invoker
+RPC wrapping a narrowly scoped private definer. The private helper checks
+`auth.uid()` against the board owner before an exact normalized-email lookup in
+`auth.users`. It grants or updates only that board's membership. The definer is
+needed to access Auth's private user directory; it is not used to bypass an
+application permission error. Both functions revoke PUBLIC/anon execution and
+use an empty search_path. Direct calls by a non-owner are rejected too. No admin
+key, user-directory listing, or email delivery is required.
+
+The owner receives feedback for missing accounts, invalid requests and failures.
+Granting again changes an existing member's permission. A recipient can navigate
+to or refresh their dashboard, see the shared board under existing RLS policies,
+and open it. Editors can change contents; viewers remain read-only. A current
+viewer who is upgraded can reopen/reload the board to refresh page permissions.
+
+## Automatic connection recovery
+
+`use-shared-board.ts` uses bounded exponential backoff (0.5s up to 15s), connection
+and authorization timeouts, and the browser online event. Edits pause while the
+connection is unavailable; this is recovery of already queued edits, not an
+offline editor. Every retry obtains a fresh cookie-aware authorization response,
+so an expired socket token is not reused. Terminal HTTP 401/403/404 or invalid
+messages stop retries and explain the failure without discarding the draft.
+
+A reconnect joins with the tab's stable session ID and pending request UUIDs.
+After serializing earlier room operations, the server sends a full authoritative
+checkpoint and the IDs already committed for that verified user. The browser
+removes those acknowledged requests before projecting its remaining field-level
+edits over the fresh document, then sends the remainder in order. Remote changes
+to other objects or fields are preserved. Same-field conflicts keep the existing
+last-accepted-command rule.
+
+The room writes each edit/undo/redo receipt into a separate `receipts` Y.Map and
+persists it in the same binary checkpoint as the change. If a saved creation's
+acknowledgement is lost, reconnect or retry does not create it twice or advance
+the revision again. Receipt ownership comes from the verified user, never from a
+client-supplied user ID. Receipt lookup and mutation run in the same room queue
+as object operations. The durable receipt ledger contributes to the existing
+10 MiB state limit; compaction/retention is future scaling work.
+
+UndoManager origins are stable for a verified user's tab session, so a network
+reconnect retains its selective undo while the process is running. Server restart
+restores the binary board and receipts but resets in-memory undo stacks. The UI
+explains that reset; uncommitted undo/redo commands are not silently replayed
+against an empty history. Accepted undo/redo requests are settled by their receipts.
+Transient capture markers are discarded at rejoin and a new capture boundary
+separates the recovered edit from earlier history. Presence leaves and rejoins
+with the socket; cursor coordinates remain viewer-relative as before.
+
+## Access/recovery verification
+
+The unit/protocol suite covers owner-only service calls, normalized registered
+emails, invalid/missing recipients, recovery queue reconciliation, retry bounds,
+idempotent requests after binary restart, and selective undo after reconnect.
+
+`tests/e2e/access-recovery.spec.ts` uses separate real Supabase account contexts
+and controlled WebSocket interruptions to verify:
+
+- Owner Share form succeeds for a registered recipient and reports unknown email.
+- The recipient sees the board in their dashboard and can collaborate.
+- Non-owners cannot grant through the UI, Next endpoint, or direct database RPC.
+- Regranting viewer access yields a read-only board.
+- The disconnected browser receives edits made by the other user, resumes editing,
+  and retains a JavaScript marker proving no page refresh occurred.
+- An edit interrupted before sending is replayed without losing remote fields.
+- A persisted creation whose acknowledgement is dropped appears exactly once;
+  reconnect does not increment its saved revision again.
+
+All test boards and memberships are removed afterward. The real Supabase binary
+restart test also passed after durable receipts were added. The security advisor
+reported no new function/RLS issues; its existing [leaked-password protection
+warning](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection)
+remains unchanged. No account-wide Auth preferences were altered.
+
+The final access/recovery verification run on October 26, 2026 passed all 101
+unit/protocol tests and 29 browser tests (the separate opt-in live-signup case
+was skipped). The real Supabase binary restart test passed too. No packages
+were added. The remote migration version matches the committed migration filename.
+The final production Turbopack build and TypeScript checks passed.

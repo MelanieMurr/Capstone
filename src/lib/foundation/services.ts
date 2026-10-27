@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AppError, boardInputSchema, boardRowSchema, idSchema, loginSchema, signupSchema } from "./contracts";
+import { AppError, accessInputSchema, boardInputSchema, boardRowSchema, idSchema, loginSchema, signupSchema } from "./contracts";
 import { persistBoard, restoreBoard } from "../collaboration/persistence";
 import { readBoard, writeBoard } from "../collaboration/shared-board";
 import { boardDocumentSchema } from "../board/model";
@@ -72,7 +72,7 @@ export const getBoard = (client: SupabaseClient, id: string) => Effect.gen(funct
       if (memberError) throw memberError;
       canEdit = membership?.permission === "editor";
     }
-    return { board: parsed, document, revision: z.number().int().nonnegative().parse(doc.revision), canEdit };
+    return { board: parsed, document, isOwner: parsed.owner_id === user.id, revision: z.number().int().nonnegative().parse(doc.revision), canEdit };
   }, catch: fail });
 });
 export const modifyBoard = (client: SupabaseClient, id: string, action: "rename" | "delete", input?: unknown) => Effect.gen(function* () {
@@ -115,5 +115,22 @@ export const saveDocument = (client: SupabaseClient, id: string, input: unknown)
     if (error) throw error;
     if (!data?.length) throw new AppError("The board changed elsewhere or access was removed. Reload before saving again.", 409);
     return { revision: data[0]!.revision as number };
+  }, catch: fail });
+});
+
+export const grantCollaborator = (client: SupabaseClient, id: string, input: unknown) => Effect.gen(function* () {
+  const user = yield* authenticated(client);
+  return yield* Effect.tryPromise({ try: async () => {
+    const parsed = accessInputSchema.safeParse(input);
+    if (!idSchema.safeParse(id).success || !parsed.success) throw new AppError("Enter a registered email and choose viewer or editor access.", 400);
+    const { data: board, error: lookupError } = await client.from("boards").select("owner_id").eq("id", id).maybeSingle();
+    if (lookupError) throw lookupError;
+    if (!board || board.owner_id !== user.id) throw new AppError("Only the board owner can grant access.", 403);
+    const { error } = await client.rpc("grant_board_access", { p_board_id: id, p_email: parsed.data.email, p_permission: parsed.data.permission });
+    if (error?.code === "P0002") throw new AppError("No registered account uses that email. Ask them to create an account first.", 404);
+    if (error?.code === "42501") throw new AppError("Only the board owner can grant access.", 403);
+    if (error?.code === "22023") throw new AppError("Choose another registered account and a valid permission.", 400);
+    if (error) throw error;
+    return { message: `${parsed.data.permission === "editor" ? "Editor" : "Viewer"} access granted. They can open this board from their dashboard.`, permission: parsed.data.permission };
   }, catch: fail });
 });

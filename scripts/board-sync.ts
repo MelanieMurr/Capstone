@@ -19,13 +19,14 @@ type Backend = {
   save(token: string, boardId: string, snapshot: BoardDocument, revision: number, yjsState: string): Promise<void>;
 };
 const requestSchema = z.discriminatedUnion("type", [
-  z.strictObject({ type: z.literal("join"), boardId: z.uuid(), token: z.string().min(1) }),
+  z.strictObject({ type: z.literal("join"), boardId: z.uuid(), token: z.string().min(1), sessionId: z.uuid().optional(), pendingRequests: z.array(z.uuid()).max(2000).default([]) }),
   z.strictObject({ type: z.literal("edit"), requestId: z.uuid(), changes: z.array(changeSchema).max(2000) }),
   z.strictObject({ type: z.enum(["undo", "redo", "capture"]), requestId: z.uuid() }),
   z.strictObject({ type: z.literal("cursor"), cursor: cursorSchema }),
 ]);
-type Room = { doc: Y.Doc; revision: number; peers: Set<Peer>; queue: Promise<void>; failed: boolean };
-type Peer = { socket: WebSocket; token: string; boardId: string; room: Room; undo: Y.UndoManager; canEdit: boolean; presence: Collaborator; checkedAt: number; lastCursor: number };
+type Session = { origin: object; undo: Y.UndoManager };
+type Room = { sessions: Map<string, Session>; doc: Y.Doc; revision: number; peers: Set<Peer>; queue: Promise<void>; failed: boolean };
+type Peer = { socket: WebSocket; token: string; boardId: string; room: Room; undo: Y.UndoManager; canEdit: boolean; presence: Collaborator; checkedAt: number; lastCursor: number; sessionKey: string; origin: object };
 
 // Exporting the factory makes the room protocol testable without real accounts.
 export function startSyncServer(backend: Backend, port = 1235, origins = ["http://127.0.0.1:3000", "http://localhost:3000"]) {
@@ -37,7 +38,8 @@ export function startSyncServer(backend: Backend, port = 1235, origins = ["http:
   function failRoom(boardId: string, room: Room) {
     room.failed = true;
     rooms.delete(boardId);
-    for (const peer of room.peers) { send(peer.socket, { type: "error", message: "Shared saving stopped. Export a copy and reload." }); peer.socket.close(1011); peer.undo.destroy(); }
+    for (const peer of room.peers) { send(peer.socket, { type: "error", message: "Shared saving stopped. Export a copy and reload." }); peer.socket.close(1011); }
+    for (const session of room.sessions.values()) session.undo.destroy();
     room.peers.clear(); room.doc.destroy();
   }
   function enqueue(room: Room, work: () => Promise<void>, failed: () => void) {
@@ -95,23 +97,30 @@ export function startSyncServer(backend: Backend, port = 1235, origins = ["http:
           if (!rooms.has(frame.boardId)) {
             const loading = (async () => {
               const doc = await Effect.runPromise(restoreBoard(frame.boardId, access.snapshot, access.yjsState));
-              return { doc, revision: access.revision, peers: new Set<Peer>(), queue: Promise.resolve(), failed: false };
+              return { sessions: new Map<string, Session>(), doc, revision: access.revision, peers: new Set<Peer>(), queue: Promise.resolve(), failed: false };
             })();
             rooms.set(frame.boardId, loading);
             void loading.catch(() => { if (rooms.get(frame.boardId) === loading) rooms.delete(frame.boardId); });
           }
           const room = await rooms.get(frame.boardId)!;
           if (room.failed) throw new Error("Room unavailable; reload.");
-          const origin = {}; // A unique tracked origin for this connection.
-          const undo = new Y.UndoManager(room.doc.getMap("objects"), { trackedOrigins: new Set([origin]) });
-          peer = Object.assign(origin, { socket, token: frame.token, boardId: frame.boardId, room, undo, canEdit: access.canEdit,
-            presence: { id: randomUUID(), userId: access.user.id, name: access.user.name, color: collaboratorColor(access.user.id), cursor: null }, checkedAt: Date.now(), lastCursor: 0 });
+          const sessionKey = `${access.user.id}:${frame.sessionId ?? randomUUID()}`;
+          const previous = room.sessions.get(sessionKey);
+          const historyReset = !previous;
+          const origin = previous?.origin ?? {};
+          const undo = previous?.undo ?? new Y.UndoManager(room.doc.getMap("objects"), { trackedOrigins: new Set([origin]) });
+          room.sessions.set(sessionKey, { origin, undo });
+          undo.stopCapturing();
+          for (const old of room.peers) if (old.sessionKey === sessionKey) old.socket.close(1000, "Connection replaced");
+          peer = { socket, token: frame.token, boardId: frame.boardId, room, undo, origin, sessionKey, canEdit: access.canEdit,
+            presence: { id: randomUUID(), userId: access.user.id, name: access.user.name, color: collaboratorColor(access.user.id), cursor: null }, checkedAt: Date.now(), lastCursor: 0 };
           clearTimeout(timeout);
           const joined = peer;
           enqueue(room, async () => {
-            if (socket.readyState !== WebSocket.OPEN) { undo.destroy(); return; }
+            if (socket.readyState !== WebSocket.OPEN) return;
             room.peers.add(joined);
-            send(socket, { type: "state", update: Buffer.from(Y.encodeStateAsUpdate(room.doc)).toString("base64"), canEdit: joined.canEdit, canUndo: false, canRedo: false });
+            send(socket, { type: "state", update: Buffer.from(Y.encodeStateAsUpdate(room.doc)).toString("base64"), canEdit: joined.canEdit, canUndo: undo.canUndo(), canRedo: undo.canRedo(), historyReset,
+              settled: frame.pendingRequests.filter((id) => room.doc.getMap<string>("receipts").get(id) === access.user.id) });
             await presence(room);
           }, () => failRoom(frame.boardId, room));
           return;
@@ -122,37 +131,46 @@ export function startSyncServer(backend: Backend, port = 1235, origins = ["http:
           if (socket.readyState !== WebSocket.OPEN) return;
           if (frame.type === "cursor") {
             if (frame.cursor && Date.now() - current.lastCursor < 75) return;
-            await authorize(current);
+            try { await authorize(current); } catch { socket.close(1008, "Access expired or removed"); return; }
             current.lastCursor = Date.now(); current.presence.cursor = frame.cursor;
             await presence(current.room); return;
           }
-          await authorize(current, true);
+          try { await authorize(current, true); } catch { socket.close(1008, "Access expired or removed"); return; }
           if (!current.canEdit) { send(socket, { type: "error", message: "You no longer have edit access. Reload the board." }); socket.close(1008); return; }
           if (frame.type === "capture") {
             current.undo.stopCapturing();
             send(socket, { type: "ack", requestId: frame.requestId, canUndo: current.undo.canUndo(), canRedo: current.undo.canRedo() });
             return;
           }
+          const receipts = current.room.doc.getMap<string>("receipts");
+          const seen = receipts.get(frame.requestId);
+          if (seen) {
+            if (seen !== current.presence.userId) { socket.close(1008, "Request identity mismatch"); return; }
+            send(socket, { type: "ack", requestId: frame.requestId, canUndo: current.undo.canUndo(), canRedo: current.undo.canRedo() });
+            return;
+          }
           const vector = Y.encodeStateVector(current.room.doc);
-          if (frame.type === "edit") await Effect.runPromise(applyChanges(current.room.doc, current.boardId, frame.changes, current));
+          if (frame.type === "edit") await Effect.runPromise(applyChanges(current.room.doc, current.boardId, frame.changes, current.origin));
           else if (frame.type === "undo") current.undo.undo();
           else current.undo.redo();
           // Undo/concurrent deletion can leave a dangling attachment; remove it.
           const snapshot = await Effect.runPromise(readBoard(current.room.doc, current.boardId));
           await Effect.runPromise(writeBoard(current.room.doc, snapshot, "reconcile"));
+          // Save the receipt with the edit: reconnects can identify a lost acknowledgement.
+          current.room.doc.transact(() => receipts.set(frame.requestId, current.presence.userId), "receipt");
           const stored = await Effect.runPromise(persistBoard(current.room.doc, current.boardId));
           await backend.save(current.token, current.boardId, stored.snapshot, current.room.revision, stored.yjsState);
           current.room.revision += 1;
           await broadcast(current.room, Y.encodeStateAsUpdate(current.room.doc, vector), current, frame.requestId);
         }, () => failRoom(current.boardId, current.room));
-      }, () => { send(socket, { type: "error", message: "Invalid or unauthorized sync request." }); socket.close(1008); });
+      }, () => { send(socket, { type: "error", code: peer ? "fatal" : "join", message: "Invalid or unauthorized sync request." }); socket.close(1008); });
     });
     socket.on("close", () => {
       clearTimeout(timeout); clearInterval(heartbeat);
       if (!peer) return;
       const gone = peer;
       enqueue(gone.room, async () => {
-        gone.room.peers.delete(gone); gone.undo.destroy();
+        gone.room.peers.delete(gone);
         await presence(gone.room);
         // Keep the room document until shutdown; a later visitor reuses its history.
       }, () => failRoom(gone.boardId, gone.room));
@@ -162,7 +180,7 @@ export function startSyncServer(backend: Backend, port = 1235, origins = ["http:
   return { http, wss, close: () => new Promise<void>((resolve) => {
     for (const client of wss.clients) client.terminate();
     wss.close(() => http.close(() => {
-      void Promise.all([...rooms.values()].map(async (loading) => { const room = await loading; await room.queue; for (const peer of room.peers) peer.undo.destroy(); room.doc.destroy(); })).then(() => resolve());
+      void Promise.all([...rooms.values()].map(async (loading) => { const room = await loading; await room.queue; for (const session of room.sessions.values()) session.undo.destroy(); room.doc.destroy(); })).then(() => resolve());
     }));
   }) };
 }

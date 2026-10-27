@@ -16,3 +16,4 @@ next-env.d.ts
 package.json
 playwright.config.ts
 tsconfig.json
+supabase/.temp/

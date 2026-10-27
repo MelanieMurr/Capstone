@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { Effect } from "effect";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { authenticate, authenticated, createBoard, modifyBoard, saveDocument } from "./services";
+import { authenticate, authenticated, createBoard, grantCollaborator, modifyBoard, saveDocument } from "./services";
 import { mutationOrigin } from "./http";
 import { restoreBoard } from "../collaboration/persistence";
 import { readBoard } from "../collaboration/shared-board";
@@ -60,6 +60,24 @@ describe("authentication and dashboard domain", () => {
     await expect(result(modifyBoard(supabase, boardId, "rename", { title: "Stolen" }))).rejects.toThrow("Only the board owner");
     await expect(result(modifyBoard(supabase, boardId, "delete"))).rejects.toThrow("Only the board owner");
     expect(query.update).not.toHaveBeenCalled(); expect(query.delete).not.toHaveBeenCalled();
+  });
+  it("allows only the owner to grant registered-user access", async () => {
+    const { db, supabase } = client();
+    const query = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), maybeSingle: vi.fn().mockResolvedValue({ data: { owner_id: other }, error: null }) };
+    db.from.mockReturnValue(query);
+    await expect(result(grantCollaborator(supabase, boardId, { email: "other@example.test", permission: "editor" }))).rejects.toThrow("Only the board owner");
+    expect(db.rpc).not.toHaveBeenCalled();
+    query.maybeSingle.mockResolvedValue({ data: { owner_id: owner }, error: null }); db.rpc.mockResolvedValue({ data: other, error: null });
+    expect(await result(grantCollaborator(supabase, boardId, { email: " Other@Example.test ", permission: "editor" }))).toHaveProperty("permission", "editor");
+    expect(db.rpc).toHaveBeenCalledWith("grant_board_access", { p_board_id: boardId, p_email: "other@example.test", p_permission: "editor" });
+  });
+  it("validates access requests and reports a missing registered account", async () => {
+    const { db, supabase } = client();
+    await expect(result(grantCollaborator(supabase, boardId, { email: "invalid", permission: "owner" }))).rejects.toThrow("registered email");
+    expect(db.from).not.toHaveBeenCalled();
+    db.from.mockReturnValue({ select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), maybeSingle: vi.fn().mockResolvedValue({ data: { owner_id: owner }, error: null }) });
+    db.rpc.mockResolvedValue({ data: null, error: { code: "P0002" } });
+    await expect(result(grantCollaborator(supabase, boardId, { email: "missing@example.test", permission: "viewer" }))).rejects.toThrow("No registered account");
   });
   it("rejects blank board titles before mutation", async () => {
     const { db, supabase } = client();

@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { ReactNode, PointerEvent as ReactPointerEvent } from "react";
 import { Effect } from "effect";
 import { resolveEndpoint } from "../lib/board/model";
 import type { BoardDocument, BoardObject } from "../lib/board/model";
@@ -26,13 +26,14 @@ const tools: { id: Tool; icon: string; name: string; key: string }[] = [
 ];
 const colors = ["#fff0b5", "#d9ede5", "#eadff3", "#f7d6c7", "#d5e7f5", "#ffffff"];
 
-export default function Workspace({ initialDocument, identity, onDocumentChange, readOnly = false, remoteStatus, live }: {
+export default function Workspace({ initialDocument, identity, onDocumentChange, readOnly = false, remoteStatus, live, sharePanel }: {
   initialDocument?: BoardDocument;
   identity?: { id: string; title: string };
   onDocumentChange?: (document: BoardDocument) => void;
   readOnly?: boolean;
   remoteStatus?: string;
   live?: LiveBoard;
+  sharePanel?: ReactNode;
 } = {}) {
   const [board, setBoard] = useState<BoardDocument>(initialDocument ?? initialBoard);
   const [ready, setReady] = useState(false);
@@ -240,6 +241,6 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
       </div> : <div className="panel-content empty-inspector"><div className="selection-illustration"><span /><span /><i>↖</i></div><h2>A space for<br />your next big idea.</h2><p>Select anything on your board to edit its details.</p><div className="quick-start"><span className="eyebrow">MAKE YOUR FIRST MOVE</span><button onClick={() => { setTool("sticky-note"); }}>▧ Add a sticky note <span>N</span></button><button onClick={() => setTool("text")}>T Write something <span>T</span></button><button onClick={() => setTool("shape")}>□ Give it some shape <span>S</span></button></div><div className="quiet-note">A blank canvas.<br />Endless possibilities.</div></div>}</fieldset>
     </aside>
     <footer className="statusbar"><span role="status"><i />{[remoteStatus, status].filter(Boolean).join(" · ")}</span><span>{board.objects.length} objects <span className="footer-dot">·</span> Made for thinking together</span></footer>
-    {dialog && <div className="modal-backdrop" onClick={() => setDialog(false)}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="share-title" onClick={(event) => event.stopPropagation()}><button className="modal-close" aria-label="Close sharing dialog" autoFocus onClick={() => setDialog(false)}>×</button><span className="eyebrow">THINKING TOGETHER</span><h2 id="share-title">Your ideas deserve company.</h2><p>{identity ? "Live collaboration is enabled for existing board members. Invitation management will be connected in a later milestone." : "This demo is saved on this device. Sign in through My boards to create private cloud-saved boards."}</p><button className="button primary" onClick={() => run(exportBoard(board), () => { setStatus("Board exported"); setDialog(false); })}>Export a board copy</button></section></div>}
+    {dialog && <div className="modal-backdrop" onClick={() => setDialog(false)}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="share-title" onClick={(event) => event.stopPropagation()}><button className="modal-close" aria-label="Close sharing dialog" autoFocus onClick={() => setDialog(false)}>×</button><span className="eyebrow">THINKING TOGETHER</span><h2 id="share-title">Your ideas deserve company.</h2><p>{identity ? "Share this board with someone who already has a CoCanvas account." : "This demo is saved on this device. Sign in through My boards to create private cloud-saved boards."}</p>{sharePanel}<button className="button" onClick={() => run(exportBoard(board), () => { setStatus("Board exported"); setDialog(false); })}>Export a board copy</button></section></div>}
   </main>;
 }

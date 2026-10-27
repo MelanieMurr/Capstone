@@ -10,5 +10,5 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   if (result.error instanceof AppError && result.error.status === 401) redirect("/login");
   if (result.error instanceof AppError && result.error.status === 404) notFound();
   if (!result.value) throw new Error("Could not open this board.");
-  return <SavedBoard id={id} title={result.value.board.title} document={result.value.document} revision={result.value.revision} canEdit={result.value.canEdit} />;
+  return <SavedBoard id={id} title={result.value.board.title} document={result.value.document} revision={result.value.revision} canEdit={result.value.canEdit} isOwner={result.value.isOwner} />;
 }

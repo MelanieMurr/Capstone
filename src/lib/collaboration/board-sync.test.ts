@@ -28,11 +28,11 @@ async function setup() {
   cleanup.push(() => service.close());
   if (!service.http.listening) await once(service.http, "listening");
   let address = service.http.address(); if (!address || typeof address === "string") throw new Error("No port");
-  async function join(token: string, boardId: string) {
+  async function join(token: string, boardId: string, options: { sessionId?: string; pendingRequests?: string[] } = {}) {
     const socket = new WebSocket(`ws://127.0.0.1:${address && typeof address !== "string" ? address.port : 0}`, { origin: "http://127.0.0.1:3000" });
     const doc = new Y.Doc(); const messages: any[] = []; // Protocol fixture deliberately inspects raw frames.
     socket.on("message", (bytes) => { const frame = JSON.parse(bytes.toString()); messages.push(frame); if (frame.type === "state") Y.applyUpdate(doc, Buffer.from(frame.update, "base64")); });
-    await once(socket, "open"); socket.send(JSON.stringify({ type: "join", token, boardId }));
+    await once(socket, "open"); socket.send(JSON.stringify({ type: "join", token, boardId, ...options }));
     async function wait(predicate: (frame: any) => boolean) {
       const deadline = Date.now() + 2000;
       while (!messages.some(predicate)) {
@@ -133,6 +133,33 @@ describe("authenticated board-room protocol", () => {
     const { join, stored } = await setup(); stored.get(a)!.yjsState = "\\xff";
     const alice = await join("alice", a); await alice.wait((f) => f.type === "error");
     expect(alice.messages.some((f) => f.type === "state")).toBe(false); expect(stored.get(a)?.revision).toBe(0);
+  });
+  it("settles a saved request after reconnect and restart without applying it twice", async () => {
+    const { join, stored, restart } = await setup(); const sessionId = crypto.randomUUID();
+    const alice = await join("alice", a, { sessionId }); await alice.wait((f) => f.type === "state");
+    const requestId = crypto.randomUUID();
+    const note = boardDocumentSchema.parse({ schemaVersion: 1, boardId: a, objects: [{ id: objectId, type: "sticky-note", text: "Exactly once" }] }).objects[0]!;
+    alice.socket.send(JSON.stringify({ type: "edit", requestId, changes: [{ kind: "create", object: note }] }));
+    await alice.wait(() => stored.get(a)?.revision === 1);
+    await restart();
+    const resumed = await join("alice", a, { sessionId, pendingRequests: [requestId] });
+    const state = await resumed.wait((f) => f.type === "state"); expect(state.settled).toEqual([requestId]); expect(state.historyReset).toBe(true);
+    resumed.socket.send(JSON.stringify({ type: "edit", requestId, changes: [{ kind: "create", object: note }] }));
+    await resumed.wait((f) => f.type === "ack" && f.requestId === requestId);
+    expect(stored.get(a)?.revision).toBe(1); expect(resumed.board().objects).toHaveLength(1);
+  });
+  it("keeps per-tab undo across a transport reconnect and preserves another user's text", async () => {
+    const { join } = await setup(); const sessionId = crypto.randomUUID();
+    const alice = await join("alice", a, { sessionId }), bob = await join("bob", a);
+    await Promise.all([alice, bob].map((peer) => peer.wait((f) => f.type === "state")));
+    const note = boardDocumentSchema.parse({ schemaVersion: 1, boardId: a, objects: [{ id: objectId, type: "sticky-note" }] }).objects[0]!;
+    await alice.command("edit", [{ kind: "create", object: note }]); await alice.command("capture");
+    await alice.command("edit", [{ kind: "patch", id: objectId, patch: { x: 250 } }]);
+    await bob.command("edit", [{ kind: "patch", id: objectId, patch: { text: "Bob's text" } }]);
+    alice.socket.close(); await once(alice.socket, "close");
+    const resumed = await join("alice", a, { sessionId }); const state = await resumed.wait((f) => f.type === "state");
+    expect(state.historyReset).toBe(false); expect(state.canUndo).toBe(true);
+    await resumed.command("undo"); expect(resumed.board().objects[0]).toMatchObject({ x: 0, text: "Bob's text" });
   });
   it("rejects invalid tokens before sending board data", async () => {
     const { join } = await setup(); const bad = await join("invalid", a);
