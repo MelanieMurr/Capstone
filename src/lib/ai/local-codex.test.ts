@@ -56,3 +56,15 @@ describe("local Codex provider", () => {
     expect(cliUsage('not JSON\n{"type":"thread.started"}')).toBeNull();
   });
 });
+
+ it.each(["categorize", "summary", "action-items"])("forwards the selected %s operation and notes to the server-side CLI", async (operation) => {
+    command.mockImplementation(async (_binary, args, options) => {
+      if (args.includes("status")) return { stdout: "Logged in using ChatGPT", stderr: "" };
+      const instruction = operation === "categorize" ? "selected categorization" : operation === "summary" ? "selected a summary" : "selected action items";
+      expect(options.input).toContain(instruction);
+      expect(options.input).toContain(evaluationNotes[0]!.text);
+      await writeFile(args[args.indexOf("--output-last-message") + 1]!, JSON.stringify(fixtureResult));
+      return { stdout: '{"type":"turn.completed"}', stderr: "" };
+    });
+    expect((await Effect.runPromise(evaluateWithLocalCodex({ notes: evaluationNotes, prompt: "grounded", operation }))).result).toEqual(fixtureResult);
+  });

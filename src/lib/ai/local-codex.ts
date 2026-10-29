@@ -50,16 +50,16 @@ export function evaluateWithLocalCodex(input: unknown, signal?: AbortSignal) {
         const schemaPath = join(folder, "response-schema.json");
         const outputPath = join(folder, "response.json");
         await writeFile(schemaPath, JSON.stringify(z.toJSONSchema(responseSchema)), { mode: 0o600 });
-        const operationIntruction = {
+        const operationInstruction = {
           categorize:
             "The user selected categorization. Emphasize useful themes and clear category names.",
           summary:
-            "The user selected a summary. Emphasize a concise synthesis of the supplied notes.",
+            "The user selected a summary. Synthesize only the supplied notes into a concise, coherent summary. Do not add unsupported conclusions.",
           "action-items":
-            "The user selected action items. Emphasize concrete next steps supported by the supplied notes.",
+            "The user selected action items. Suggest concrete next steps supported by the supplied notes, referencing their source IDs. Do not invent owners or deadlines. Return an empty actionItems array when no actions are supported.",
         };
 
-        const selectedOperationInstruction = request.operation ? operationIntruction[request.operation] : "Provide the complete analysis.";
+        const selectedOperationInstruction = request.operation ? operationInstruction[request.operation] : "Provide the complete analysis.";
 
         const prompt = [
           "Return only the requested structured analysis of the supplied notes. Do not inspect files, run tools, or perform development work.",

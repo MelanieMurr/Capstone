@@ -13,10 +13,10 @@ import type { ResizeCorner } from "../lib/board/operations";
 import { cursorToBoard } from "../lib/collaboration/presence";
 import { panTo } from "../lib/board/viewport";
 import BoardAIPanel from "./board-ai-panel";
-import { insertCategorization } from "../lib/ai/categorization";
+import { insertAIResult } from "../lib/ai/insertion";
+import type { AIOperation } from "../lib/ai/evaluation";
 import type { SubmittedNote } from "../lib/ai/categorization";
 import type { LiveBoard } from "../lib/collaboration/use-shared-board";
-import {next} from "effect/Cron";
 const BoardCanvas = dynamic(() => import("./board-canvas"), { ssr: false });
 
 type Tool = "select" | "hand" | "sticky-note" | "text" | "shape" | "connector";
@@ -80,7 +80,8 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
     });
   }
 
-  function confirmCategorization(
+  function confirmAIResult(
+      operation: AIOperation,
       input: unknown,
       submittedNotes: SubmittedNote[],
   ) : Effect.Effect<void,  Error> {
@@ -91,8 +92,9 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
         );
       }
 
-      const next = yield* insertCategorization(
+      const next = yield* insertAIResult(
           board,
+          operation,
           input,
           submittedNotes,
       );
@@ -270,7 +272,7 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
       {panel === "ai" ? (
           <BoardAIPanel
               board={board}
-              onConfirmCategorization={confirmCategorization}
+              onConfirmResult={confirmAIResult}
           />
       ) : object ? <div className="panel-content"><span className="eyebrow">SELECTED OBJECT</span><h2>{object.type === "sticky-note" ? "Sticky note" : object.type === "text" ? "Text" : object.type === "shape" ? "Shape" : "Connector"}</h2>
         {(object.type === "sticky-note" || object.type === "text" || object.type === "shape") && <label className="field">Content<textarea aria-label="Object content" value={object.type === "text" ? object.content : object.text} onChange={(event) => update({ [object.type === "text" ? "content" : "text"]: event.target.value })} /></label>}

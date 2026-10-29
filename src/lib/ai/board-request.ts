@@ -1,8 +1,7 @@
 import { Effect } from "effect";
-import {object, z} from "zod";
+import { z } from "zod";
 import type { BoardDocument } from "../board/model.ts";
 import { requestSchema, validateResult } from "./evaluation.ts";
-import {cause} from "effect/reactivity/AsyncResult";
 
 const selectionSchema = z
     .array(z.uuid())
@@ -106,7 +105,7 @@ export function requestBoardAI(
                         .safeParse(body);
 
                     throw new Error(
-                        failure.success ? failure.data.error : `AI request failed (${response.status}.`,
+                        failure.success ? failure.data.error : `AI request failed (${response.status}).`,
                     );
                 }
 
@@ -124,7 +123,7 @@ export function requestBoardAI(
                     );
                 }
 
-                return requestError(cause);
+                return new Error(cause instanceof Error && cause.message ? cause.message : "The AI request failed. Please try again.");
             },
         });
 

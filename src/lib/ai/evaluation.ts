@@ -1,13 +1,21 @@
 import { Effect } from "effect";
 import { z } from "zod";
 
-export const selectedNotesSchema = z.array(z.strictObject({ id: z.uuid(), text: z.string().min(1).max(2000) })).min(1).max(20).superRefine((notes, ctx) => {
+export const selectedNotesSchema = z.array(z.strictObject({ id: z.uuid(), text: z.string().trim().min(1).max(2000) })).min(1).max(20).superRefine((notes, ctx) => {
   if (new Set(notes.map((note) => note.id)).size !== notes.length) ctx.addIssue({ code: "custom", message: "Note IDs must be unique." });
 });
+export const categorizationResponseSchema = z.strictObject({
+  categories: z.array(z.strictObject({ name: z.string().trim().min(1).max(100), noteIds: z.array(z.uuid()).min(1).max(20) })).min(1).max(20),
+});
+export const summaryResponseSchema = z.strictObject({ summary: z.string().trim().min(1).max(4000) });
+export const actionItemsResponseSchema = z.strictObject({
+  actionItems: z.array(z.strictObject({ text: z.string().trim().min(1).max(1000), sourceNoteIds: z.array(z.uuid()).min(1).max(20).refine((ids) => new Set(ids).size === ids.length, "Source IDs must be unique.") })).max(20),
+});
+// Keep the existing provider envelope while defining each operation explicitly.
 export const responseSchema = z.strictObject({
-  categories: z.array(z.strictObject({ name: z.string().min(1).max(100), noteIds: z.array(z.uuid()).min(1).max(20) })).min(1).max(20),
-  summary: z.string().min(1).max(4000),
-  actionItems: z.array(z.strictObject({ text: z.string().min(1).max(1000), sourceNoteIds: z.array(z.uuid()).min(1).max(20) })).max(20),
+  ...categorizationResponseSchema.shape,
+  ...summaryResponseSchema.shape,
+  ...actionItemsResponseSchema.shape,
 });
 export type AIResult = z.infer<typeof responseSchema>;
 export const evaluationNotes = [
@@ -30,7 +38,9 @@ export const operationSchema = z.enum([
   "action-items",
 ]);
 
-export type AIOpertion = z.infer<typeof operationSchema>;
+export type AIOperation = z.infer<typeof operationSchema>;
+/** @deprecated Use AIOperation. */
+export type AIOpertion = AIOperation;
 
 export const requestSchema = z.strictObject({
   notes: selectedNotesSchema,
