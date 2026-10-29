@@ -6,6 +6,7 @@ import {Effect} from "effect";
 import type {BoardDocument} from "../lib/board/model";
 import type {AIOpertion, AIResult} from "../lib/ai/evaluation";
 import {requestBoardAI} from "../lib/ai/board-request";
+import type {SubmittedNote} from "../lib/ai/categorization";
 
 type CompletedRequest = {
     operation: AIOpertion;
@@ -15,8 +16,13 @@ type CompletedRequest = {
 
 export default function BoardAIPanel({
                                          board,
+                                         onConfirmCategorization,
                                      }: {
     board: BoardDocument;
+    onConfirmCategorization: (
+        input: unknown,
+        submittedNotes: SubmittedNote[],
+    ) => Effect.Effect<void, Error>;
 }) {
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [operation, setOperation] = useState<AIOpertion>("summary");
@@ -84,6 +90,46 @@ export default function BoardAIPanel({
         } finally {
             inFlight.current = false;
             setBusy(false);
+        }
+    }
+
+    function confirmCategories() {
+        if (
+            inFlight.current ||
+            !completed ||
+            completed.operation !== "categorize"
+        ) {
+            return;
+        }
+
+        const preview = completed;
+
+        inFlight.current = true;
+
+        try {
+            Effect.runSync(
+                Effect.match(
+                    onConfirmCategorization(
+                        preview.result,
+                        preview.notes,
+                    ),
+                    {
+                        onFailure: (error) => {
+                            setFailed(true);
+                            setMessage(error.message);
+                        },
+
+                        onSuccess: () => {
+                            setCompleted(null);
+                            setFailed(false);
+                            setMessage("Categorized copies were added below your existing objects. Check the board status for saving and synchronization.",
+                            );
+                        },
+                    },
+                ),
+            );
+        } finally {
+            inFlight.current = false;
         }
     }
 
@@ -189,26 +235,71 @@ export default function BoardAIPanel({
                     )}
 
                     {completed.operation === "categorize" && (
-                        <ul>
-                            {completed.result.categories.map((category, index) => (
-                                <li key={index}>
-                                    <strong>{category.name}</strong>
-                                    <ul>
-                                        {category.noteIds.map((id) => (
-                                            <li key={id}>
-                                                {
-                                                    completed.notes.find(
-                                                        (note) => note.id === id,
-                                                    )?.text
-                                                }
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-                    {completed.operation === "action-items" &&
+                        <div>
+                            <p>
+                                Review these categories before adding them.
+                                Confirmation creates category headings and copies
+                                of the selected notes below your existing objects.
+                                Your original notes stay unchanged.
+                            </p>
+
+                            <ul>
+                                {completed.result.categories.map((category, index) => (
+                                    <li key={index}>
+                                        <strong>{category.name}</strong>
+
+                                        <ul>
+                                            {category.noteIds.map((id) => (
+                                                <li key={id}>
+                                                    {
+                                                        completed.notes.find(
+                                                            (note) => note.id === id,
+                                                        )?.text
+                                                    }
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </li>
+                                ))}
+                            </ul>
+
+                            <div
+                                style={{
+                                    display: "flex",
+                                    flexWrap: "wrap",
+                                    gap: 8,
+                                }}
+                            >
+                                <button
+                                    type="button"
+                                    className="button primary"
+                                    disabled={busy}
+                                    onClick={confirmCategories}
+                                >
+                                    Confirm categorization
+                                </button>
+
+                                <button
+                                    type="button"
+                                    className="button"
+                                    disabled={busy}
+                                    onClick={() => {
+                                        setCompleted(null);
+                                        setFailed(false);
+                                        setMessage(
+                                            "Categorization cancelled. Your board was not changed.",
+                                        );
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    )
+                    }
+                    )
+                    {
+                        completed.operation === "action-items" &&
                         (completed.result.actionItems.length === 0 ? (
                             <p>No supported action items were found.</p>
                         ) : (
@@ -217,9 +308,11 @@ export default function BoardAIPanel({
                                     <li key={index}>{item.text}</li>
                                 ))}
                             </ul>
-                        ))}
+                        ))
+                    }
                 </section>
             )}
         </section>
-    );
+    )
+        ;
 }

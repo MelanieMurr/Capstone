@@ -13,7 +13,10 @@ import type { ResizeCorner } from "../lib/board/operations";
 import { cursorToBoard } from "../lib/collaboration/presence";
 import { panTo } from "../lib/board/viewport";
 import BoardAIPanel from "./board-ai-panel";
+import { insertCategorization } from "../lib/ai/categorization";
+import type { SubmittedNote } from "../lib/ai/categorization";
 import type { LiveBoard } from "../lib/collaboration/use-shared-board";
+import {next} from "effect/Cron";
 const BoardCanvas = dynamic(() => import("./board-canvas"), { ssr: false });
 
 type Tool = "select" | "hand" | "sticky-note" | "text" | "shape" | "connector";
@@ -76,6 +79,39 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
       else { setPast((items) => [...items.slice(-49), board]); setFuture([]); setBoard(valid); }
     });
   }
+
+  function confirmCategorization(
+      input: unknown,
+      submittedNotes: SubmittedNote[],
+  ) : Effect.Effect<void,  Error> {
+    return Effect.gen(function* (){
+      if (readOnly) {
+        return yield* Effect.fail(
+            new Error("Editing is unavailable. Reconnect or check your board access.",),
+        );
+      }
+
+      const next = yield* insertCategorization(
+          board,
+          input,
+          submittedNotes,
+      );
+
+      if (live) {
+        live.capture();
+
+        const updated = yield* live.edit(board, next);
+
+        live.capture();
+        setBoard(updated);
+      } else {
+        setPast((items) => [...items.slice(-49), board]);
+        setFuture([]);
+        setBoard(next);
+      }
+    });
+  }
+
   function update(patch: Record<string, unknown>) {
     if (!object) return;
     run(patchObject(board, object.id, patch), commit);
@@ -231,7 +267,12 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
       <div className="zoom-controls" onPointerDown={(event) => event.stopPropagation()}><button aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(0.25, value - 0.1))}>−</button><button aria-label="Reset zoom" onClick={() => { setZoom(0.85); setPan({ x: 35, y: 25 }); }}>{Math.round(zoom * 100)}%</button><button aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(2, value + 0.1))}>+</button></div>
     </section>
     <aside className="inspector"><fieldset className="readonly-fields" disabled={readOnly}><div className="panel-tabs"><button className={panel === "properties" ? "active" : ""} onClick={() => setPanel("properties")}>Design</button><button className={panel === "ai" ? "active" : ""} onClick={() => setPanel("ai")}>✦ Assistant</button></div>
-      {panel === "ai" ? <BoardAIPanel board={board} /> : object ? <div className="panel-content"><span className="eyebrow">SELECTED OBJECT</span><h2>{object.type === "sticky-note" ? "Sticky note" : object.type === "text" ? "Text" : object.type === "shape" ? "Shape" : "Connector"}</h2>
+      {panel === "ai" ? (
+          <BoardAIPanel
+              board={board}
+              onConfirmCategorization={confirmCategorization}
+          />
+      ) : object ? <div className="panel-content"><span className="eyebrow">SELECTED OBJECT</span><h2>{object.type === "sticky-note" ? "Sticky note" : object.type === "text" ? "Text" : object.type === "shape" ? "Shape" : "Connector"}</h2>
         {(object.type === "sticky-note" || object.type === "text" || object.type === "shape") && <label className="field">Content<textarea aria-label="Object content" value={object.type === "text" ? object.content : object.text} onChange={(event) => update({ [object.type === "text" ? "content" : "text"]: event.target.value })} /></label>}
         {object.type !== "connector" && <div className="field-grid">{(["x", "y", "width", "height", "rotation", "zIndex"] as const).map((key) => <label className="field" key={key}>{key}<input type="number" aria-label={key} value={object[key]} onChange={(event) => { if (event.target.value !== "") update({ [key]: Number(event.target.value) }); }} /></label>)}</div>}
         {(object.type === "sticky-note" || object.type === "shape") && <><label className="field">{object.type === "sticky-note" ? "Note color" : "Fill"}</label><div className="swatches">{colors.map((color) => <button key={color} aria-label={`Set color ${color}`} className={(object.type === "sticky-note" ? object.backgroundColor : object.fill) === color ? "picked" : ""} style={{ background: color }} onClick={() => update({ [object.type === "sticky-note" ? "backgroundColor" : "fill"]: color })} />)}</div></>}
