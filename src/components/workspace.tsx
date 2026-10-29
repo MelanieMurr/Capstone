@@ -272,6 +272,7 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
       {panel === "ai" ? (
           <BoardAIPanel
               board={board}
+              savedBoardId={identity?.id}
               onConfirmResult={confirmAIResult}
           />
       ) : object ? <div className="panel-content"><span className="eyebrow">SELECTED OBJECT</span><h2>{object.type === "sticky-note" ? "Sticky note" : object.type === "text" ? "Text" : object.type === "shape" ? "Shape" : "Connector"}</h2>

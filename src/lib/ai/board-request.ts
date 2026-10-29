@@ -78,6 +78,7 @@ export function requestBoardAI(
     board: BoardDocument,
     selectedIds: readonly string[],
     operation: unknown,
+    savedBoardId?: string,
 ) {
     return Effect.gen(function* () {
         const payload = yield* prepareBoardAIRequest(
@@ -88,7 +89,7 @@ export function requestBoardAI(
 
         const rawResult = yield* Effect.tryPromise({
             try: async () => {
-                const response = await fetch("/api/prototypes/ai", {
+                const response = await fetch(savedBoardId ? `/api/boards/${encodeURIComponent(savedBoardId)}/ai` : "/api/prototypes/ai", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",

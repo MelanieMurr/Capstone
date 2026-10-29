@@ -84,7 +84,7 @@ test("confirmed AI output synchronizes to another user and restores from saved b
     await alice.getByRole("region", { name: "Board canvas" }).click({ position: { x: 220, y: 180 } });
     await alice.getByRole("textbox", { name: "Object content", exact: true }).fill("Prototype navigation and test it with classmates.");
     await expect(objects(bob)).toHaveCount(1);
-    await alice.route("**/api/prototypes/ai", async (route) => route.fulfill({ json: { result: resultFor(route.request().postDataJSON().notes) } }));
+    await alice.route("**/api/boards/*/ai", async (route) => route.fulfill({ json: { result: resultFor(route.request().postDataJSON().notes) } }));
     await openAssistant(alice);
     for (const [operation, label, expected] of [["summary", "summary", 2], ["action-items", "action items", 3], ["categorize", "categorization", 5]] as const) {
       await assistant(alice).getByRole("checkbox").first().check();

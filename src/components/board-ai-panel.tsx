@@ -11,8 +11,9 @@ import type { SubmittedNote } from "../lib/ai/categorization";
 type Preview = { operation: AIOperation; notes: SubmittedNote[]; result: AIResult };
 const labels = { categorize: "categorization", summary: "summary", "action-items": "action items" };
 
-export default function BoardAIPanel({ board, onConfirmResult }: {
+export default function BoardAIPanel({ board, savedBoardId, onConfirmResult }: {
   board: BoardDocument;
+  savedBoardId?: string | undefined;
   onConfirmResult: (operation: AIOperation, input: unknown, notes: SubmittedNote[]) => Effect.Effect<void, Error>;
 }) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -34,7 +35,7 @@ export default function BoardAIPanel({ board, onConfirmResult }: {
     setMessage("Sending your selected notes to local Codex…");
     const chosen = operation;
     try {
-      await Effect.runPromise(Effect.match(requestBoardAI(board, selectedIds, chosen), {
+      await Effect.runPromise(Effect.match(requestBoardAI(board, selectedIds, chosen, savedBoardId), {
         onFailure: (error) => { if (attempt === generation.current) { setFailed(true); setMessage(error.message); } },
         onSuccess: ({ result, notes: submitted }) => {
           if (attempt !== generation.current) return;

@@ -8,8 +8,10 @@ React manages selection, loading, feedback, and the temporary review state.
 
 ## Provider and contracts
 
-The existing development-only, localhost-restricted `POST /api/prototypes/ai`
-endpoint runs the installed local Codex CLI with its ChatGPT login. No API-key
+Saved boards use the authenticated `POST /api/boards/[id]/ai` endpoint, which
+checks editor access and selected content against the saved board. The public
+demo/lab retain `POST /api/prototypes/ai`. Both use the development-only,
+localhost-restricted handler that runs the installed local Codex CLI with its ChatGPT login. No API-key
 fallback or new library was added. This is not a publicly deployed AI backend.
 The existing server request size/origin checks, concurrency limit, request rate
 limit, CLI timeout, temporary-directory cleanup, and tool restrictions remain.
