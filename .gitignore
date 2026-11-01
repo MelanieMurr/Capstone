@@ -13,7 +13,6 @@ test-results/
 .env.example
 README.md
 next-env.d.ts
-package.json
 playwright.config.ts
 tsconfig.json
 supabase/.temp/

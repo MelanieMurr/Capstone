@@ -26,6 +26,12 @@ describe("local AI route boundaries", () => {
     expect((await POST(new Request("http://localhost/api/prototypes/ai", { method: "POST", body: "invalid" }))).status).toBe(400);
     expect(provider).not.toHaveBeenCalled();
   });
+  it("rejects oversized bodies without requiring a Content-Length header", async () => {
+    const { POST } = await import("../../app/api/prototypes/ai/route");
+    const input = new Request("http://localhost:3000/api/prototypes/ai", { method: "POST", body: "x".repeat(60001) });
+    expect((await POST(input)).status).toBe(413);
+    expect(provider).not.toHaveBeenCalled();
+  });
   it("returns the subscription provider response without requiring any API key", async () => {
     vi.stubEnv("OPENAI_API_KEY", "");
     provider.mockReturnValue(Effect.succeed({ result: fixtureResult, model: "Codex CLI default", usage: null, prompt: "grounded", source: "local-codex-cli", authentication: "chatgpt" }));

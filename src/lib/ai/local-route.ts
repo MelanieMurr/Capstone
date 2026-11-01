@@ -2,23 +2,22 @@ import { Effect } from "effect";
 import { requestSchema } from "./evaluation";
 import { evaluateWithLocalCodex } from "./local-codex";
 
-import { mutationOrigin } from "../foundation/http";
+import { mutationOrigin, readJSON } from "../foundation/http";
 
 let requests: number[] = [];
 let active = false;
-export async function handleLocalAI(request: Request) {
+export async function handleLocalAI(request: Request, verifiedInput?: unknown) {
   if (process.env.NODE_ENV === "production") return Response.json({ error: "Local development evaluation only." }, { status: 404 });
   const url = new URL(request.url);
   if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) return Response.json({ error: "Localhost access only." }, { status: 403 });
   if (!mutationOrigin(request)) return Response.json({ error: "Invalid origin." }, { status: 403 });
   if (Number(request.headers.get("content-length") || 0) > 60000) return Response.json({ error: "Request too large." }, { status: 413 });
-  const input = await Effect.runPromise(Effect.match(Effect.tryPromise({
-    try: async () => {
-      const body = await request.text();
-      if (body.length > 60000) throw new Error("Request too large");
-      return requestSchema.parse(JSON.parse(body));
-    }, catch: () => new Error("Select 1–20 notes with unique IDs and at most 2000 characters each."),
-  }), { onSuccess: (value) => value, onFailure: () => null }));
+  const parsed = await Effect.runPromise(Effect.match(Effect.gen(function* () {
+    const body = verifiedInput ?? (yield* readJSON(request, 60000));
+    return yield* Effect.try({ try: () => requestSchema.parse(body), catch: () => new Error("Select 1–20 notes with unique IDs and at most 2000 characters each.") });
+  }), { onSuccess: (value) => ({ value, error: null }), onFailure: (error) => ({ value: null, error }) }));
+  const input = parsed.value;
+  if (parsed.error && "status" in parsed.error && parsed.error.status === 413) return Response.json({ error: "Request too large." }, { status: 413 });
   if (!input) return Response.json({ error: "Invalid or oversized request. Select 1–20 notes with unique IDs and at most 2000 characters each." }, { status: 400 });
   requests = requests.filter((time) => Date.now() - time < 60000);
   if (active || requests.length >= 4) return Response.json({ error: "Evaluation limit reached. Wait before trying again." }, { status: 429, headers: { "Retry-After": "60" } });

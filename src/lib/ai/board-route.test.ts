@@ -46,6 +46,11 @@ describe("saved-board AI integration boundary", () => {
     expect((await POST(request(undefined, { operation: "invent" }), context)).status).toBe(400);
     expect(provider).not.toHaveBeenCalled();
   });
+  it("rejects oversized streamed input before invoking the provider", async () => {
+    const input = new Request(`http://localhost:3000/api/boards/${initialBoard.boardId}/ai`, { method: "POST", body: "x".repeat(60001) });
+    expect((await POST(input, context)).status).toBe(413);
+    expect(provider).not.toHaveBeenCalled();
+  });
   it("rejects cross-site requests before loading a board", async () => {
     const input = request(); input.headers.set("Origin", "https://example.com");
     expect((await POST(input, context)).status).toBe(403); expect(lookup).not.toHaveBeenCalled();
