@@ -16,3 +16,4 @@ next-env.d.ts
 playwright.config.ts
 tsconfig.json
 supabase/.temp/
+.vercel

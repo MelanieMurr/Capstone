@@ -55,6 +55,11 @@ export default function BoardAIPanel({ board, savedBoardId, onConfirmResult }: {
       }));
     } finally { inFlight.current = false; }
   }
+  if (process.env.NODE_ENV === "production") return <section className="panel-content">
+    <span className="eyebrow">YOUR BOARD ASSISTANT</span><h2>AI runs locally</h2>
+    <p>AI assistance is available in the local development app. It is not enabled on this public website.</p>
+    <p>Your boards and real-time collaboration are available here.</p>
+  </section>;
   return <section className="panel-content">
     <span className="eyebrow">YOUR BOARD ASSISTANT</span><h2>Explore your notes</h2>
     <p>Choose sticky notes and an operation. Results are previews until you confirm. Uses local Codex on this computer.</p>

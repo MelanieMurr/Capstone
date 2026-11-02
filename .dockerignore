@@ -1,0 +1,17 @@
+.git
+.agents
+.codex
+.idea
+.vercel
+.env*
+node_modules
+.next
+.playwright
+out
+coverage
+playwright-report
+test-results
+tests
+docs
+*.log
+*.tsbuildinfo

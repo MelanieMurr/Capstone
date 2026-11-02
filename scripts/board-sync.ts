@@ -1,3 +1,4 @@
+import { syncServerConfig } from "../src/lib/collaboration/server-config.ts";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
@@ -29,7 +30,7 @@ type Room = { sessions: Map<string, Session>; doc: Y.Doc; revision: number; peer
 type Peer = { socket: WebSocket; token: string; boardId: string; room: Room; undo: Y.UndoManager; canEdit: boolean; presence: Collaborator; checkedAt: number; lastCursor: number; sessionKey: string; origin: object };
 
 // Exporting the factory makes the room protocol testable without real accounts.
-export function startSyncServer(backend: Backend, port = 1235, origins = ["http://127.0.0.1:3000", "http://localhost:3000"]) {
+export function startSyncServer(backend: Backend, port = 1235, origins = ["http://127.0.0.1:3000", "http://localhost:3000"], host = "127.0.0.1") {
   const http = createServer((_req, res) => { res.writeHead(200); res.end("CoCanvas board sync"); });
   const wss = new WebSocketServer({ server: http, maxPayload: 256 * 1024 });
   const rooms = new Map<string, Promise<Room>>();
@@ -176,7 +177,7 @@ export function startSyncServer(backend: Backend, port = 1235, origins = ["http:
       }, () => failRoom(gone.boardId, gone.room));
     });
   });
-  http.listen(port, "127.0.0.1");
+  http.listen(port, host);
   return { http, wss, close: () => new Promise<void>((resolve) => {
     for (const client of wss.clients) client.terminate();
     wss.close(() => http.close(() => {
@@ -215,13 +216,16 @@ export function supabaseBackend(): Backend {
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   Effect.runSync(Effect.match(Effect.try({
-    try: () => startSyncServer(supabaseBackend()),
-    catch: () => new Error("Check the Supabase environment settings before starting board sync."),
+    try: () => {
+      const config = Effect.runSync(syncServerConfig(process.env));
+      return startSyncServer(supabaseBackend(), config.port, config.origins, config.host);
+    },
+    catch: (cause) => new Error(cause instanceof Error ? cause.message : "Check the board sync environment settings."),
   }), {
     onFailure: (error) => { console.error(error.message); process.exitCode = 1; },
     onSuccess: (service) => {
-      service.http.on("listening", () => console.log("Board sync: ws://127.0.0.1:1235"));
-      service.http.on("error", () => { console.error("Board sync could not listen on port 1235."); process.exitCode = 1; });
+      service.http.on("listening", () => console.log(`Board sync listening on ${JSON.stringify(service.http.address())}`));
+      service.http.on("error", () => { console.error("Board sync could not bind its configured host and port."); process.exitCode = 1; });
       for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => {
         void Effect.runPromise(Effect.match(Effect.tryPromise({ try: service.close, catch: () => new Error("Sync shutdown failed.") }), {
           onSuccess: () => process.exit(0), onFailure: () => process.exit(1),

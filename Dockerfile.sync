@@ -1,0 +1,11 @@
+FROM node:24-bookworm-slim
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit
+COPY scripts/board-sync.ts ./scripts/board-sync.ts
+COPY src/lib/board/model.ts ./src/lib/board/model.ts
+COPY src/lib/collaboration/shared-board.ts src/lib/collaboration/persistence.ts src/lib/collaboration/presence.ts src/lib/collaboration/server-config.ts ./src/lib/collaboration/
+ENV NODE_ENV=production BOARD_SYNC_HOST=0.0.0.0
+USER node
+EXPOSE 1235
+CMD ["node", "scripts/board-sync.ts"]
