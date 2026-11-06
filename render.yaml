@@ -1,0 +1,25 @@
+# Public capstone demonstration service; database state remains in Supabase.
+# Free instances may sleep when idle. No paid service or autoscaling is enabled.
+services:
+  - type: web
+    name: cocanvas-sync
+    runtime: docker
+    repo: https://github.com/MelanieMurr/Capstone
+    branch: main
+    plan: free
+    numInstances: 1
+    autoDeployTrigger: "off"
+    dockerfilePath: ./Dockerfile.sync
+    dockerContext: .
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BOARD_SYNC_HOST
+        value: 0.0.0.0
+      - key: BOARD_SYNC_ORIGINS
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+        sync: false

@@ -11,7 +11,7 @@ import { reconnectDelay, recoverCommands } from "./recovery";
 import type { Command } from "./recovery";
 
 const messageSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("state"), update: z.string(), requestId: z.string().optional(), canEdit: z.boolean(), canUndo: z.boolean(), canRedo: z.boolean(), settled: z.array(z.uuid()).optional(), historyReset: z.boolean().optional() }),
+  z.object({ type: z.literal("state"), update: z.string(), requestId: z.string().optional(), canEdit: z.boolean(), canUndo: z.boolean(), canRedo: z.boolean(), settled: z.array(z.uuid()).optional(), historyReset: z.boolean().optional(), resetDocument: z.boolean().optional() }),
   z.object({ type: z.literal("ack"), requestId: z.string(), canUndo: z.boolean(), canRedo: z.boolean() }),
   z.object({ type: z.literal("error"), code: z.string().optional(), message: z.string() }),
   z.object({ type: z.literal("presence"), peers: z.array(collaboratorSchema).max(1000) }),
@@ -113,7 +113,7 @@ export function useSharedBoard(boardId: string): LiveBoard {
         if ([401, 403, 404].includes(response.status)) { fatal(new Error(body.error || "Board access ended. Sign in again.")); return; }
         if (!response.ok) throw new Error(body.error || "Could not authorize this board.");
         const { token } = z.object({ token: z.string().min(1) }).parse(body);
-        const current = new WebSocket(process.env.NEXT_PUBLIC_BOARD_SYNC_URL || "ws://127.0.0.1:1235"); socket = current;
+        const current = new WebSocket(process.env.NEXT_PUBLIC_BOARD_SYNC_URL || (process.env.NODE_ENV === "production" ? `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/boards/sync` : "ws://127.0.0.1:1235")); socket = current;
         let first = true;
         joinTimer = setTimeout(() => retry(new Error("Shared board connection timed out."), attempt), 12_000);
         current.onopen = () => {
@@ -124,7 +124,7 @@ export function useSharedBoard(boardId: string): LiveBoard {
           if (!active || stopped || attempt !== generation) return;
           Effect.runSync(Effect.match(Effect.try({ try: () => {
             const message = messageSchema.parse(JSON.parse(event.data));
-            if (message.type === "error") { if (message.code === "join") retry(new Error("Could not join the shared board."), attempt); else fatal(new Error(message.message)); return; }
+            if (message.type === "error") { if (message.code === "join" || message.code === "retry") retry(new Error(message.message || "Could not join the shared board."), attempt); else fatal(new Error(message.message)); return; }
             if (message.type === "presence") { setView((old) => ({ ...old, collaborators: message.peers })); return; }
             if (message.type === "state") {
               const update = Uint8Array.from(atob(message.update), (character) => character.charCodeAt(0));
@@ -134,6 +134,7 @@ export function useSharedBoard(boardId: string): LiveBoard {
                 doc.destroy(); doc = new Y.Doc(); inFlight = null;
                 first = false; joinedBefore = true; attempts = 0; clearTimeout(joinTimer);
               }
+              if (message.resetDocument) { doc.destroy(); doc = new Y.Doc(); }
               Y.applyUpdate(doc, update, "server"); connected = true; editable = message.canEdit;
             }
             if (message.requestId && message.requestId === inFlight) { pending.shift(); inFlight = null; }

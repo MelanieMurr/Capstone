@@ -120,3 +120,12 @@ findings. Never commit the dedicated test account fixture or environment secrets
   no critical findings; remaining impact and limits are recorded above.
 - Clean-install dry-run passed; Vercel CLI version check passed (62.7.0).
 - The local development server is restarted after the build.
+
+## Dependency follow-up — November 2, 2026
+
+The tooling findings recorded above are historical. The JavaScript Vercel CLI
+was replaced with Vercel's official native CLI package, and the obsolete
+transitive overrides were removed. The current full project audit reports **zero
+vulnerabilities**, including development dependencies. See
+[dependency maintenance](dependency-maintenance.md) for the root cause,
+clean-install repair, and verification details.

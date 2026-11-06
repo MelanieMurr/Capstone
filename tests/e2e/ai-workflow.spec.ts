@@ -10,6 +10,7 @@ function resultFor(notes: { id: string }[]) {
 }
 async function openAssistant(page: Page) {
   await page.getByRole("button", { name: "✦ Assistant", exact: true }).click();
+  await assistant(page).getByRole("combobox", { name: "AI provider", exact: true }).selectOption("local-codex");
 }
 for (const [operation, label, additions] of [["categorize", "categorization", 3], ["summary", "summary", 1], ["action-items", "action items", 1]] as const) {
   test(`${operation}: preview, cancellation, loading, confirmation, undo, reload and errors`, async ({ page }) => {
@@ -28,7 +29,7 @@ for (const [operation, label, additions] of [["categorize", "categorization", 3]
     await run(page).click(); await expect(assistant(page).getByRole("alert")).toContainText("Select at least one");
     await assistant(page).getByRole("checkbox").nth(0).check();
     await assistant(page).getByRole("checkbox").nth(1).check();
-    await assistant(page).getByRole("combobox").selectOption(operation);
+    await assistant(page).getByRole("combobox", { name: "AI operation", exact: true }).selectOption(operation);
     async function generate() {
       release = undefined; await run(page).click();
       await expect(page.getByRole("button", { name: "Working…" })).toBeDisabled();
@@ -52,7 +53,7 @@ for (const [operation, label, additions] of [["categorize", "categorization", 3]
     // Wait for the debounced storage write by checking its actual contents.
     await expect.poll(() => page.evaluate(() => Object.values(localStorage).some((value) => value.includes("Useful themes") || value.includes("A verified summary") || value.includes("Test the proposed navigation")))).toBe(true);
     await page.reload(); await expect(objects(page)).toHaveCount(baseline + additions); await openAssistant(page);
-    await assistant(page).getByRole("checkbox").first().check(); await assistant(page).getByRole("combobox").selectOption(operation);
+    await assistant(page).getByRole("checkbox").first().check(); await assistant(page).getByRole("combobox", { name: "AI operation", exact: true }).selectOption(operation);
     for (const failure of ["invalid", "failed"]) {
       mode = failure; await generate();
       await expect(assistant(page).getByRole("alert")).toContainText(failure === "invalid" ? "Rejected response" : "Simulated provider failure");
@@ -88,7 +89,7 @@ test("confirmed AI output synchronizes to another user and restores from saved b
     await openAssistant(alice);
     for (const [operation, label, expected] of [["summary", "summary", 2], ["action-items", "action items", 3], ["categorize", "categorization", 5]] as const) {
       await assistant(alice).getByRole("checkbox").first().check();
-      await assistant(alice).getByRole("combobox").selectOption(operation);
+      await assistant(alice).getByRole("combobox", { name: "AI operation", exact: true }).selectOption(operation);
       await run(alice).click(); await expect(alice.getByRole("region", { name: "AI response" })).toBeVisible();
       await expect(objects(bob)).toHaveCount(expected - (operation === "categorize" ? 2 : 1));
       await alice.getByRole("button", { name: `Confirm ${label}`, exact: true }).click();

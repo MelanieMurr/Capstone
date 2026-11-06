@@ -2,7 +2,9 @@
 
 Open Assistant on a board, select 1–20 sticky notes (up to 2,000 characters each),
 and choose categorization, summary, or action items. Requests send only selected
-UUIDs, text, the operation, and the grounded prompt choice. Effect handles request
+UUIDs, text, the operation, grounded prompt choice, and explicit provider selection.
+ChatGPT subscription requests also identify the selected local registration/model;
+they never send credentials from the browser. Effect handles request
 preparation, network failures, output validation, and confirmed board operations.
 React manages selection, loading, feedback, and the temporary review state.
 
@@ -11,8 +13,11 @@ React manages selection, loading, feedback, and the temporary review state.
 Saved boards use the authenticated `POST /api/boards/[id]/ai` endpoint, which
 checks editor access and selected content against the saved board. The public
 demo/lab retain `POST /api/prototypes/ai`. Both use the development-only,
-localhost-restricted handler that runs the installed local Codex CLI with its ChatGPT login. No API-key
-fallback or new library was added. This is not a publicly deployed AI backend.
+localhost-restricted handler. The board Assistant defaults to a directly connected
+ChatGPT subscription through the installed OpenAI SDK; the local Codex CLI remains
+an explicit provider choice. The evaluation lab retains its existing CLI default.
+See [local ChatGPT connection](chatgpt-subscription.md) for setup and an implementation
+walkthrough. No API-key fallback or new library was added. This is not a publicly deployed AI backend.
 The existing server request size/origin checks, concurrency limit, request rate
 limit, CLI timeout, temporary-directory cleanup, and tool restrictions remain.
 

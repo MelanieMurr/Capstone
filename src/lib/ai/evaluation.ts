@@ -46,7 +46,10 @@ export const requestSchema = z.strictObject({
   notes: selectedNotesSchema,
   prompt: z.enum(["concise", "grounded"]),
   operation: operationSchema.optional(),
-});
+  provider: z.enum(["chatgpt", "local-codex"]).optional(),
+  connectionId: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  model: z.string().min(1).max(200).optional(),
+}).refine((value) => value.provider !== "chatgpt" || (!!value.connectionId && !!value.model), "Choose a connected ChatGPT account and model.");
 
 export function validateResult(input: unknown, notes: unknown) {
   return Effect.try({

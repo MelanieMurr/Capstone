@@ -79,6 +79,7 @@ export function requestBoardAI(
     selectedIds: readonly string[],
     operation: unknown,
     savedBoardId?: string,
+    connection?: { provider: "chatgpt" | "local-codex"; connectionId?: string; model?: string },
 ) {
     return Effect.gen(function* () {
         const payload = yield* prepareBoardAIRequest(
@@ -94,7 +95,7 @@ export function requestBoardAI(
                     headers: {
                         "Content-Type": "application/json",
                     },
-                    body: JSON.stringify(payload),
+                    body: JSON.stringify({ ...payload, ...connection }),
                     signal: AbortSignal.timeout(100_000),
                 });
 

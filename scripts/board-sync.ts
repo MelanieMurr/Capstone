@@ -1,3 +1,5 @@
+import { startDistributedSyncServer } from "./distributed-sync.ts";
+import { distributedSupabaseStore } from "../src/lib/collaboration/distributed-store.ts";
 import { syncServerConfig } from "../src/lib/collaboration/server-config.ts";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
@@ -218,7 +220,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   Effect.runSync(Effect.match(Effect.try({
     try: () => {
       const config = Effect.runSync(syncServerConfig(process.env));
-      return startSyncServer(supabaseBackend(), config.port, config.origins, config.host);
+      return startDistributedSyncServer(distributedSupabaseStore(), config.port, config.origins, config.host);
     },
     catch: (cause) => new Error(cause instanceof Error ? cause.message : "Check the board sync environment settings."),
   }), {

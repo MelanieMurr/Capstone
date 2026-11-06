@@ -1,6 +1,9 @@
 import { Effect } from "effect";
 import { requestSchema } from "./evaluation";
 import { evaluateWithLocalCodex } from "./local-codex";
+import { evaluateWithChatGPT, ChatGPTInferenceError } from "./chatgpt/inference";
+import { localUser, requireLocal } from "./chatgpt/access";
+import { AppError } from "../foundation/contracts";
 
 import { mutationOrigin, readJSON } from "../foundation/http";
 
@@ -11,6 +14,7 @@ export async function handleLocalAI(request: Request, verifiedInput?: unknown) {
   const url = new URL(request.url);
   if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) return Response.json({ error: "Localhost access only." }, { status: 403 });
   if (!mutationOrigin(request)) return Response.json({ error: "Invalid origin." }, { status: 403 });
+  try { requireLocal(request, true); } catch { return Response.json({ error: "Localhost access only." }, { status: 403 }); }
   if (Number(request.headers.get("content-length") || 0) > 60000) return Response.json({ error: "Request too large." }, { status: 413 });
   const parsed = await Effect.runPromise(Effect.match(Effect.gen(function* () {
     const body = verifiedInput ?? (yield* readJSON(request, 60000));
@@ -23,9 +27,13 @@ export async function handleLocalAI(request: Request, verifiedInput?: unknown) {
   if (active || requests.length >= 4) return Response.json({ error: "Evaluation limit reached. Wait before trying again." }, { status: 429, headers: { "Retry-After": "60" } });
   requests.push(Date.now()); active = true;
   try {
-    return await Effect.runPromise(Effect.match(evaluateWithLocalCodex(input, request.signal), {
+    const program: Effect.Effect<unknown, Error> = input.provider === "chatgpt" ? Effect.gen(function* () {
+      const user = yield* localUser(request, true);
+      return yield* evaluateWithChatGPT(user.id, input, request.signal);
+    }) : evaluateWithLocalCodex(input, request.signal);
+    return await Effect.runPromise(Effect.match(program, {
       onSuccess: (data) => Response.json(data),
-      onFailure: (error) => Response.json({ error: error.message }, { status: 502 }),
+      onFailure: (error) => Response.json({ error: error.message, ...(error instanceof ChatGPTInferenceError ? { code: error.code, requestId: error.requestId, param: error.param } : {}) }, { status: error instanceof AppError ? error.status : 502 }),
     }));
   } finally { active = false; }
 }

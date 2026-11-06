@@ -4,7 +4,8 @@
   "description": "CoCanvas, an intelligent collaborative workspace",
   "main": "index.js",
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "next dev --hostname 127.0.0.1",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
@@ -15,7 +16,8 @@
     "test:e2e:install": "PLAYWRIGHT_BROWSERS_PATH=./.playwright playwright install chromium",
     "board:sync": "node --env-file=.env.local scripts/board-sync.ts",
     "prototype:sync": "node scripts/prototype-sync.mjs",
-    "prototype:ai": "node scripts/evaluate-ai.mjs"
+    "prototype:ai": "node scripts/evaluate-ai.mjs",
+    "test:vercel": "node --test tests/integration/vercel-collaboration.test.ts"
   },
   "repository": {
     "type": "git",
@@ -36,17 +38,18 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/ws": "^8.18.2",
+    "@vercel/vc-native": "65.10.0",
     "typescript": "^7.0.2",
-    "vercel": "^62.7.0",
     "vitest": "^4.1.11"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.3",
+    "@vercel/functions": "3.11.0",
     "effect": "^4.0.2",
     "konva": "^10.7.1",
     "next": "^16.4.0",
-    "openai": "^7.30.0",
+    "openai": "^7.47.0",
     "pg": "^8.23.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
@@ -55,11 +58,5 @@
     "y-websocket": "^3.1.0",
     "yjs": "^13.6.33",
     "zod": "^4.6.5"
-  },
-  "overrides": {
-    "tar": "7.5.22",
-    "vercel": {
-      "undici": "6.29.1"
-    }
   }
 }

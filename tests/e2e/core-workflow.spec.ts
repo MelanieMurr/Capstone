@@ -46,6 +46,7 @@ test("core workflow: account, dashboard, access, canvas, AI confirmation, saved 
       await alice.route("**/api/boards/*/ai", (route) => route.fulfill({ json: { result: { categories: [{ name: "Navigation", noteIds: [doc.objects[0].id] }], summary: "Prototype and evaluate board search.", actionItems: [] } } }));
     }
     await alice.getByRole("button", { name: "✦ Assistant", exact: true }).click();
+    await alice.getByRole("combobox", { name: "AI provider", exact: true }).selectOption("local-codex");
     await alice.locator(".inspector").getByRole("checkbox").first().check();
     await alice.getByRole("button", { name: "Run AI request", exact: true }).click();
     await expect(alice.getByRole("region", { name: "AI response" })).toBeVisible({ timeout: 110_000 });

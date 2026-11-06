@@ -1,0 +1,22 @@
+# The CLI uploads the working directory, independently of Git staging.
+.git/
+.agents/
+.codex/
+.idea/
+.local/
+.playwright/
+.vercel/
+.next/
+node_modules/
+out/
+coverage/
+playwright-report/
+test-results/
+supabase/.temp/
+.env*
+*.log
+*.tsbuildinfo
+.DS_Store
+tests/
+**/*.test.ts
+**/*.test.tsx
