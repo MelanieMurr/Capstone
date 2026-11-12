@@ -62,9 +62,9 @@ export default function BoardAIPanel({ board, savedBoardId, onConfirmResult, edi
     } finally { inFlight.current = false; }
   }
   if (process.env.NODE_ENV === "production") return <section className="panel-content">
-    <span className="eyebrow">YOUR BOARD ASSISTANT</span><h2>AI runs locally</h2>
-    <p>AI assistance is available in the local development app. It is not enabled on this public website.</p>
-    <p>Your boards and real-time collaboration are available here.</p>
+    <span className="eyebrow">YOUR BOARD ASSISTANT</span><h2>AI isn’t available on this website yet</h2>
+    <p>ChatGPT connections and AI requests are not currently available here. You can still create, edit, and share boards.</p>
+    <p>To use AI now, run CoCanvas on your own computer, sign in, and connect ChatGPT from Assistant.</p>
   </section>;
   return <section className="panel-content">
     <span className="eyebrow">YOUR BOARD ASSISTANT</span><h2>Explore your notes</h2>

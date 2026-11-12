@@ -27,5 +27,5 @@ export default function AuthForm({ signup = false }: { signup?: boolean }) {
     {signup && <p className="account-help">Use 12–128 characters. Your account opens immediately after signup.</p>}
     <button className="button primary" disabled={busy}>{busy ? "Please wait…" : signup ? "Create account" : "Sign in"}</button>
     {message && <p role={error ? "alert" : "status"}>{message}</p>}
-  </form><p>{signup ? "Already have an account?" : "New to CoCanvas?"} <a href={signup ? "/login" : "/signup"}>{signup ? "Sign in" : "Create account"}</a></p><a className="account-help" href="/">Explore the local demo →</a></section></main>;
+  </form><p className="account-help">{process.env.NODE_ENV === "production" ? "ChatGPT sign-in is not available on this website yet. Use your email to create an account or sign in." : "Sign in to CoCanvas with your email first. You can then connect ChatGPT from Assistant on a board."}</p><p>{signup ? "Already have an account?" : "New to CoCanvas?"} <a href={signup ? "/login" : "/signup"}>{signup ? "Sign in" : "Create account"}</a></p></section></main>;
 }

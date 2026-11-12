@@ -7,6 +7,23 @@ import BoardAIPanel from "./board-ai-panel";
 import { initialBoard } from "../lib/board/frontend";
 
 describe("paused board controls", () => {
+  it.each([
+    [{ displayName: "Alice", email: "other@example.com" }, "A", "Alice"],
+    [{ displayName: "", email: "bob@example.com" }, "B", "bob@example.com"],
+    [undefined, "?", "Your account"],
+  ] as const)("uses the viewer's identity in both account avatars", (account, initial, label) => {
+    const html = renderToStaticMarkup(<Workspace initialDocument={initialBoard} account={account} readOnly />);
+    expect(html).toContain(`title="${label}" href="/dashboard">${initial}</a>`);
+    expect(html).toContain(`<span class="avatar tiny" title="${label}">${initial}</span>`);
+  });
+  it("explains hosted AI availability without presenting a working ChatGPT connection", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      const html = renderToStaticMarkup(<BoardAIPanel board={initialBoard} onConfirmResult={() => Effect.void} />);
+      expect(html).toContain("AI isn’t available on this website yet");
+      expect(html).not.toContain("Run AI request");
+    } finally { vi.unstubAllEnvs(); }
+  });
   it("keeps inspector navigation outside the disabled editing fieldset", () => {
     const html = renderToStaticMarkup(<Workspace initialDocument={initialBoard} readOnly />);
     const tab = html.indexOf("✦ Assistant");

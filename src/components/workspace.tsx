@@ -13,6 +13,7 @@ import type { ResizeCorner } from "../lib/board/operations";
 import { cursorToBoard } from "../lib/collaboration/presence";
 import { panTo } from "../lib/board/viewport";
 import BoardAIPanel from "./board-ai-panel";
+import { accountInitial } from "../lib/foundation/identity";
 import { insertAIResult } from "../lib/ai/insertion";
 import type { AIOperation } from "../lib/ai/evaluation";
 import type { SubmittedNote } from "../lib/ai/categorization";
@@ -30,7 +31,8 @@ const tools: { id: Tool; icon: string; name: string; key: string }[] = [
 ];
 const colors = ["#fff0b5", "#d9ede5", "#eadff3", "#f7d6c7", "#d5e7f5", "#ffffff"];
 
-export default function Workspace({ initialDocument, identity, onDocumentChange, readOnly = false, remoteStatus, live, sharePanel }: {
+export default function Workspace({ initialDocument, identity, onDocumentChange, readOnly = false, remoteStatus, live, sharePanel, account }: {
+  account?: { displayName: string; email: string } | undefined;
   initialDocument?: BoardDocument;
   identity?: { id: string; title: string };
   onDocumentChange?: (document: BoardDocument) => void;
@@ -218,6 +220,10 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
     window.addEventListener("keydown", key); return () => window.removeEventListener("keydown", key);
   });
 
+  const avatar = accountInitial(account);
+  const accountName = account?.displayName.trim() || account?.email || "Your account";
+  const sidebarObjects = board.objects.filter((item) => item.type === "sticky-note" || item.type === "text");
+
   return <main className="workspace">
     <header className="topbar">
       <div className="brand"><span className="logo">c<span>•</span></span><h1>CoCanvas</h1></div>
@@ -226,19 +232,17 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
       <div className="header-actions">{live && <div className="collaborators" role="list" aria-label="Active collaborators">
         {live.collaborators.map((person) => <span role="listitem" className="collaborator-avatar" key={person.id} title={person.name} aria-label={person.name} style={{ background: person.color }}>{person.name.slice(0, 1).toUpperCase()}</span>)}
         <span className="collaborator-count">{live.connected ? live.collaborators.length + 1 : 0} online</span>
-      </div>}<a className="local-status" href="/dashboard">My boards ↗</a><a className="avatar" aria-label="Your account and boards" href="/dashboard">M</a><button className="button" onClick={() => run(exportBoard(board), () => setStatus("Board exported"))}>↗ <span>Export</span></button><button className="button primary" onClick={() => setDialog(true)}>Share board</button></div>
+      </div>}<a className="local-status" href="/dashboard">My boards ↗</a><a className="avatar" aria-label="Your account and boards" title={accountName} href="/dashboard">{avatar}</a><button className="button" onClick={() => run(exportBoard(board), () => setStatus("Board exported"))}>↗ <span>Export</span></button><button className="button primary" onClick={() => setDialog(true)}>Share board</button></div>
     </header>
     <aside className="sidebar">
       <div className="workspace-label">YOUR WORKSPACE</div>
       <button className="nav-item active" onClick={() => { setPan({ x: 35, y: 25 }); setZoom(0.85); }}>▦ <span>{identity?.title ?? "First things first"}</span><span className="small">↗</span></button>
-      <div className="sidebar-section"><div className="section-title">ON THIS BOARD <span>{board.objects.length}</span></div><input aria-label="Search objects" className="search" placeholder="⌕  Find an idea…" value={search} onChange={(event) => setSearch(event.target.value)} />
-        <div className="object-list">{board.objects.filter((item) => `${JSON.stringify(item)} ${item.type === "connector" ? connectorLabel(item, board.objects) : ""}`.toLowerCase().includes(search.toLowerCase())).map((item) => <button key={item.id} className={`object-row ${selected === item.id ? "chosen" : ""}`} onClick={() => { setSelected(item.id); setPanel("properties"); const start = item.type === "connector" ? resolveEndpoint(item.start, board.objects) : null;
-          const end = item.type === "connector" ? resolveEndpoint(item.end, board.objects) : null;
-          const point = start && end ? { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 } : item;
-          setPan({ x: 80 - point.x * zoom, y: 90 - point.y * zoom }); }}><span className="object-dot" style={{ background: item.type === "sticky-note" ? item.backgroundColor : "#e8ece9" }}>{item.type === "text" ? "T" : ""}</span><span>{item.type === "sticky-note" ? item.text.split("\n")[0] || "Untitled note" : item.type === "text" ? item.content.split("\n")[0] : item.type === "shape" ? item.text.split("\n")[0] || "Untitled shape" : connectorLabel(item, board.objects)}</span></button>)}</div>
+      <div className="sidebar-section"><div className="section-title">ON THIS BOARD <span>{sidebarObjects.length}</span></div><input aria-label="Search objects" className="search" placeholder="⌕  Find an idea…" value={search} onChange={(event) => setSearch(event.target.value)} />
+        <div className="object-list">{sidebarObjects.filter((item) => JSON.stringify(item).toLowerCase().includes(search.toLowerCase())).map((item) => <button key={item.id} className={`object-row ${selected === item.id ? "chosen" : ""}`} onClick={() => { setSelected(item.id); setPanel("properties");
+          setPan({ x: 80 - item.x * zoom, y: 90 - item.y * zoom }); }}><span className="object-dot" style={{ background: item.type === "sticky-note" ? item.backgroundColor : "#e8ece9" }}>{item.type === "text" ? "T" : ""}</span><span>{item.type === "sticky-note" ? item.text.split("\n")[0] || "Untitled note" : item.content.split("\n")[0]}</span></button>)}</div>
       </div>
       <div className="sidebar-bottom"><div className="tip-icon">✦</div><strong>A little room for possibility</strong><p>Start with a thought.<br />Make something of it.</p><button className="text-button" onClick={() => setPanel("ai")}>Explore your ideas <span>→</span></button></div>
-      <div className="sidebar-footer"><span className="avatar tiny">M</span><div>My workspace<small>{identity ? live && !live.connected ? "Connecting to board" : readOnly ? "View-only access" : "Cloud saved" : "Local mode"}</small></div></div>
+      <div className="sidebar-footer"><span className="avatar tiny" title={accountName}>{avatar}</span><div>My workspace<small>{identity ? live && !live.connected ? "Connecting to board" : readOnly ? "View-only access" : "Cloud saved" : "Local mode"}</small></div></div>
     </aside>
     <section className="canvas-area" ref={area} aria-label="Board canvas" onPointerDown={(event) => down(event)} onPointerMove={move} onPointerLeave={() => live?.cursor(null)} onPointerUp={up} onPointerCancel={cancelGesture} style={{ cursor: tool === "hand" ? "grab" : tool === "select" ? "default" : "crosshair" }}>
       <div className="canvas-breadcrumb">WORKSPACE <span>/</span> <strong>{identity?.title ?? "First things first"}</strong></div>

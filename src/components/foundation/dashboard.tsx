@@ -1,10 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Effect } from "effect";
 import { boardInputSchema, boardRowSchema } from "../../lib/foundation/contracts";
 import type { BoardRow } from "../../lib/foundation/contracts";
 import { z } from "zod";
 export default function Dashboard({ userId, email }: { userId: string; email: string }) {
+  const router = useRouter();
   const [boards, setBoards] = useState<BoardRow[]>([]); const [loading, setLoading] = useState(true);
   const [error, setError] = useState(""); const [busy, setBusy] = useState(false); const [title, setTitle] = useState("");
   const [renameId, setRenameId] = useState<string | null>(null); const [rename, setRename] = useState(""); const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -28,7 +30,7 @@ export default function Dashboard({ userId, email }: { userId: string; email: st
   }
   return <main className="dashboard-page"><header className="dashboard-header"><a className="account-brand" href="/">CoCanvas<span>•</span></a><div><span>{email}</span><button className="button" disabled={busy} onClick={() => action(async () => { await request("/api/auth/signout", "POST", {}); window.location.assign("/login"); })}>Sign out</button></div></header>
     <div className="dashboard-heading"><div><span className="eyebrow">YOUR WORKSPACE</span><h1>A little space. A lot of possibility.</h1><p>Your private boards and the ones shared with you.</p></div><a className="button" href="/prototypes">Prototype lab ↗</a></div>
-    <form className="new-board-form" onSubmit={(event) => { event.preventDefault(); void action(async () => { const input = boardInputSchema.safeParse({ title }); if (!input.success) throw new Error("Use a board title of 1–120 characters."); await request("/api/boards", "POST", input.data); setTitle(""); await load(); }); }}><label htmlFor="new-board">Start something new</label><div><input id="new-board" aria-label="New board title" maxLength={120} placeholder="Give your next idea a name…" value={title} onChange={(event) => setTitle(event.target.value)} disabled={busy} /><button className="button primary" disabled={busy || !title.trim()}>Create board</button></div></form>
+    <form className="new-board-form" onSubmit={(event) => { event.preventDefault(); void action(async () => { const input = boardInputSchema.safeParse({ title }); if (!input.success) throw new Error("Use a board title of 1–120 characters."); const created = boardRowSchema.parse(await request("/api/boards", "POST", input.data)); setTitle(""); router.push(`/boards/${created.id}`); }); }}><label htmlFor="new-board">Start something new</label><div><input id="new-board" aria-label="New board title" maxLength={120} placeholder="Give your next idea a name…" value={title} onChange={(event) => setTitle(event.target.value)} disabled={busy} /><button className="button primary" disabled={busy || !title.trim()}>Create board</button></div></form>
     <div className="board-list-heading"><h2>Your boards</h2><input aria-label="Search boards" placeholder="Search your boards…" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
     {error && <div role="alert" className="dashboard-error">{error} <button className="button" disabled={busy} onClick={load}>Try again</button></div>}
     {loading ? <p role="status">Loading your boards…</p> : <>

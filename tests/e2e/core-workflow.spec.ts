@@ -16,8 +16,9 @@ test("core workflow: account, dashboard, access, canvas, AI confirmation, saved 
     const title = `Core workflow ${Date.now()}`;
     await alice.getByRole("textbox", { name: "New board title", exact: true }).fill(title);
     await alice.getByRole("button", { name: "Create board", exact: true }).click();
-    const open = alice.getByRole("link", { name: `Open ${title}`, exact: true }); await expect(open).toBeVisible();
-    id = (await open.getAttribute("href"))!.split("/").at(-1)!;
+    await expect(alice).toHaveURL(/\/boards\/[0-9a-f-]{36}$/);
+    id = new URL(alice.url()).pathname.split("/").at(-1)!;
+    await alice.goto("/dashboard");
     expect((await anonymous.request.post(`/api/boards/${id}/ai`, { data: {} })).status()).toBe(401);
     expect((await bob.request.post(`/api/boards/${id}/ai`, { data: {} })).status()).toBe(404);
     await alice.getByRole("button", { name: `Rename ${title}`, exact: true }).click();

@@ -1,5 +1,15 @@
 # Deployment preparation
 
+November 11 public-entry correction: `/` now redirects through the protected
+dashboard, so signed-out visitors reach `/login?next=%2Fdashboard` and signed-in
+visitors reach their own boards. The previous root rendered the hard-coded local
+demo, including a placeholder avatar; it did not load a private account board.
+The obsolete demo link was removed from the authentication form. The final fix
+was promoted from `cocanvas-5j2d2mr99-melanies-projects-6a846645.vercel.app`.
+A fresh mobile-sized browser session verified sign-in, the Create account link,
+the signup form, and absence of the canvas/demo content. A final cookie-free HTTP
+check of the public root followed redirects to sign-in and returned 200.
+
 November 5 update: Render creation is paused. The distributed Vercel Function
 WebSocket path is implemented and has a protected candidate; hosted two-user
 verification is pending. Earlier claims that Vercel cannot host WebSockets are outdated.
@@ -7,17 +17,23 @@ See [the feasibility assessment](vercel-websocket-assessment.md) for verified
 platform support, a reproduced multi-instance room failure, and migration gates.
 The Render configuration below remains an alternative, not a provisioned service.
 
-Status: **protected Vercel candidate deployed; public deployment incomplete**.
-The existing `cocanvas` project uses Next.js / Node 24 with the existing Supabase
-URL and publishable key in its production environment. A production candidate
-built successfully on November 5, 2026. Render is connected but unprovisioned;
-the distributed Vercel candidate awaits authenticated verification; the candidate has not been promoted to the public application domain.
+Status: **published at https://cocanvas-chi.vercel.app on November 11, 2026;
+full hosted workflow verification remains pending**. The latest sidebar deployment
+(`dpl_2QpU1kzSoVtLxJgmwJTSu6SekJTX`) was promoted to the project's existing
+verified Vercel subdomain. No domain purchase or hosting-plan change was needed.
+Without a protection bypass or cookies, `/login` returned 200 with the CoCanvas
+sign-in page, `/api/boards` returned 401, and `/dashboard` redirected to CoCanvas
+sign-in. Preview protection settings were retained. A friend can create a CoCanvas
+account and receive board access through Share board. These access checks do not
+establish successful two-user WebSocket collaboration or hosted AI.
+
 The user explicitly chose Vercel plus cloud WebSocket hosting and **local-only
 AI**. Public production AI is intentionally outside this deployment's scope.
 
 Do not mark the deployment ticket complete until the public app, real-time
 service, authentication, and persistence have passed two-user production checks.
-No completed public application URL has been verified yet.
+Public entry-point access has been verified; the two-user collaboration and
+connection-renewal checks remain outstanding.
 
 ## Agreed scope — November 5, 2026
 

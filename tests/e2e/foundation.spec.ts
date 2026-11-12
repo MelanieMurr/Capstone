@@ -39,9 +39,9 @@ test("real auth, private dashboard CRUD and saved-board restoration", async ({ b
     const title = `E2E ideas ${Date.now()}`;
     await alice.getByRole("textbox", { name: "New board title", exact: true }).fill(title);
     await alice.getByRole("button", { name: "Create board", exact: true }).click();
-    const open = alice.getByRole("link", { name: `Open ${title}`, exact: true });
-    await expect(open).toBeVisible();
-    const href = (await open.getAttribute("href"))!; boardId = href.split("/").at(-1)!;
+    await expect(alice).toHaveURL(/\/boards\/[0-9a-f-]{36}$/);
+    boardId = new URL(alice.url()).pathname.split("/").at(-1)!;
+    await alice.goto("/dashboard");
     // A different authenticated user sees neither metadata nor document content.
     await bob.reload(); await expect(bob.getByRole("link", { name: title, exact: true })).toHaveCount(0);
     expect((await bob.request.get(`/api/boards/${boardId}`)).status()).toBe(404);

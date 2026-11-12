@@ -16,7 +16,7 @@ function request(notes: unknown = [{ id: note.id, text: note.text }], extra = {}
   return new Request(`http://localhost:3000/api/boards/${initialBoard.boardId}/ai`, { method: "POST", headers: { "Content-Type": "application/json", Origin: "http://localhost:3000" }, body: JSON.stringify({ notes, prompt: "grounded", operation: "summary", ...extra }) });
 }
 function allowed(canEdit = true) {
-  lookup.mockReturnValue(Effect.succeed({ document: initialBoard, canEdit, isOwner: canEdit, revision: 1, board: { id: initialBoard.boardId, title: "Test", owner_id: "20000000-0000-4000-8000-000000000001", created_at: new Date().toISOString(), updated_at: new Date().toISOString() } }));
+  lookup.mockReturnValue(Effect.succeed({ viewer: { displayName: "Test user", email: "test@example.com" }, document: initialBoard, canEdit, isOwner: canEdit, revision: 1, board: { id: initialBoard.boardId, title: "Test", owner_id: "20000000-0000-4000-8000-000000000001", created_at: new Date().toISOString(), updated_at: new Date().toISOString() } }));
 }
 beforeEach(() => { vi.mocked(supabaseServer).mockResolvedValue({} as Awaited<ReturnType<typeof supabaseServer>>); allowed(); provider.mockResolvedValue(Response.json({ result: "verified" })); });
 afterEach(() => vi.resetAllMocks());

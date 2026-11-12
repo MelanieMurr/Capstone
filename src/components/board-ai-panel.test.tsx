@@ -10,7 +10,7 @@ describe("public deployment AI availability", () => {
   it("explains local-only AI and offers no failing generation action in production", () => {
     vi.stubEnv("NODE_ENV", "production");
     const output = render();
-    expect(output).toContain("AI runs locally");
+    expect(output).toContain("AI isn’t available on this website yet");
     expect(output).not.toContain("Run AI request");
     expect(output).not.toContain('type="checkbox"');
   });

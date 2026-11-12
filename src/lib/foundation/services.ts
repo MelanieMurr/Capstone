@@ -72,7 +72,8 @@ export const getBoard = (client: SupabaseClient, id: string) => Effect.gen(funct
       if (memberError) throw memberError;
       canEdit = membership?.permission === "editor";
     }
-    return { board: parsed, document, isOwner: parsed.owner_id === user.id, revision: z.number().int().nonnegative().parse(doc.revision), canEdit };
+    const displayName = [user.user_metadata?.display_name, user.user_metadata?.full_name].find((value): value is string => typeof value === "string" && !!value.trim()) ?? "";
+    return { viewer: { displayName, email: user.email ?? "" }, board: parsed, document, isOwner: parsed.owner_id === user.id, revision: z.number().int().nonnegative().parse(doc.revision), canEdit };
   }, catch: fail });
 });
 export const modifyBoard = (client: SupabaseClient, id: string, action: "rename" | "delete", input?: unknown) => Effect.gen(function* () {
