@@ -69,8 +69,13 @@ export function useSharedBoard(boardId: string): LiveBoard {
     function enqueue(command: Command) {
       if (!connected || !editable) throw new Error("The shared board is reconnecting or view-only.");
       notice = "";
+      const fits = (edit: Extract<Command, { type: "edit" }>) =>
+        edit.changes.length <= 2000 && new TextEncoder().encode(JSON.stringify(edit)).length <= 256 * 1024;
+      if (command.type === "edit" && !fits(command)) throw new Error("This edit is too large to share at once. Try fewer objects.");
       const tail = pending.at(-1);
-      if (command.type === "edit" && tail?.type === "edit" && tail.requestId !== inFlight && tail.changes.length + command.changes.length <= 2000) tail.changes.push(...command.changes);
+      const combined = command.type === "edit" && tail?.type === "edit" && tail.requestId !== inFlight
+        ? { ...tail, changes: [...tail.changes, ...command.changes] } : null;
+      if (combined && fits(combined)) pending[pending.length - 1] = combined;
       else pending.push(command);
       return publish();
     }

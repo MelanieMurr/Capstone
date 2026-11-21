@@ -5,7 +5,8 @@ import { boardDocumentSchema } from "../board/model";
 import { openDistributedBoard, BoardAccessError, BoardBusyError } from "./distributed-board";
 import type { DistributedStore } from "./distributed-board";
 import { restoreBoard } from "./persistence";
-import { readBoard } from "./shared-board";
+import { changesBetween, readBoard } from "./shared-board";
+import { encodeSelection, pasteSelection } from "../board/interaction";
 const run = Effect.runPromise;
 const cleanup: (() => void)[] = [];
 afterEach(() => { for (const close of cleanup.splice(0)) close(); });
@@ -47,6 +48,27 @@ describe("distributed Yjs board connections", () => {
     const revision = f.stored().revision;
     await Promise.all(connections.map((connection, i) => run(connection.command({ type: "edit", requestId: randomUUID(), changes: [{ kind: "create", object: boardDocumentSchema.parse({ schemaVersion: 1, boardId: f.boardId, objects: [{ id: randomUUID(), type: "sticky-note", text: `Writer ${i}` }] }).objects[0]! }] }))));
     expect((await contents(f)).objects).toHaveLength(7); expect(f.stored().revision).toBe(revision + 6);
+  });
+  it("synchronizes a multi-object paste as one undoable edit and restores it from binary state", async () => {
+    const f = await setup(), a = await f.open(), b = await f.open(f.bob);
+    const starting = f.stored().snapshot;
+    const payload = await run(encodeSelection(starting, [f.objectId]));
+    const firstCopy = await run(pasteSelection(starting, payload, { x: 40, y: 50 }));
+    const group = await run(encodeSelection(firstCopy.board, [f.objectId, ...firstCopy.ids]));
+    const paste = await run(pasteSelection(starting, group, { x: 100, y: 100 }));
+    const command = (type: "undo" | "redo" | "capture") => ({ type, requestId: randomUUID() });
+    await run(a.command(command("capture")));
+    await run(a.command({ type: "edit", requestId: randomUUID(), changes: await run(changesBetween(starting, paste.board)) }));
+    await run(a.command(command("capture")));
+    expect(await run(b.poll())).not.toBeNull();
+    expect((await contents(f)).objects).toEqual(paste.board.objects);
+    const reopened = await f.open(f.bob);
+    expect(reopened.initial([]).update).toBeTruthy();
+    await run(a.command(command("undo")));
+    expect(await run(b.poll())).not.toBeNull();
+    expect((await contents(f)).objects).toEqual(starting.objects);
+    await run(a.command(command("redo")));
+    expect((await contents(f)).objects).toEqual(paste.board.objects);
   });
   it("retries CAS collisions and converges across independent instances", async () => {
     const f = await setup(), a = await f.open(), b = await f.open(f.bob);

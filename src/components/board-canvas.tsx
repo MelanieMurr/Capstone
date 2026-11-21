@@ -19,7 +19,7 @@ function ShapeText({ shape }: { shape: ShapeObject }) {
 // screen-reader and pointer interactions without creating a second object model.
 export default function BoardCanvas({ board, pan, zoom, selected, onError }: {
   board: BoardDocument; pan: { x: number; y: number }; zoom: number;
-  selected: string | null; onError: (message: string) => void;
+  selected: readonly string[]; onError: (message: string) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 1, height: 1 });
@@ -36,12 +36,13 @@ export default function BoardCanvas({ board, pan, zoom, selected, onError }: {
     }));
     return () => { active = false; observer?.disconnect(); };
   }, [onError]);
+  const selectedIds = new Set(selected);
   return <div ref={host} className="konva-surface" aria-hidden="true" data-testid="board-renderer" data-renderer="react-konva">
     <Stage width={size.width} height={size.height} listening={false}>
       <Layer><Group x={pan.x} y={pan.y} scaleX={zoom} scaleY={zoom}>
         {board.objects.filter((item) => item.type === "connector").map((item) => {
           const start = resolveEndpoint(item.start, board.objects), end = resolveEndpoint(item.end, board.objects);
-          return start && end ? <Arrow key={item.id} points={[start.x, start.y, end.x, end.y]} fill={item.strokeColor} stroke={selected === item.id ? "#277d67" : item.strokeColor} strokeWidth={item.strokeWidth} pointerLength={8} pointerWidth={8} pointerAtBeginning={item.arrowStyle === "both"} pointerAtEnding={item.arrowStyle !== "none"} /> : null;
+          return start && end ? <Arrow key={item.id} points={[start.x, start.y, end.x, end.y]} fill={item.strokeColor} stroke={selectedIds.has(item.id) ? "#277d67" : item.strokeColor} strokeWidth={item.strokeWidth} pointerLength={8} pointerWidth={8} pointerAtBeginning={item.arrowStyle === "both"} pointerAtEnding={item.arrowStyle !== "none"} /> : null;
         })}
         {[...board.objects].sort((a, b) => a.zIndex - b.zIndex || a.id.localeCompare(b.id)).filter((item) => item.type !== "connector").map((item) => <Group key={`${item.id}-${fontReady}`} x={item.x} y={item.y} rotation={item.rotation}>
           {item.type === "sticky-note" ? <>

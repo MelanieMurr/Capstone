@@ -24,3 +24,8 @@
 
 .board-sharing{text-align:left;margin:20px 0}.board-sharing .field input{width:100%;padding:10px;border:1px solid var(--line);border-radius:6px}.board-sharing>p{font-size:12px;line-height:1.5}.board-sharing [role=alert]{color:#9d5342}
 .modal{max-height:calc(100dvh - 32px);overflow-y:auto}
+
+.canvas-marquee { position:absolute; z-index:3; pointer-events:none; border:1px solid var(--green); background:#28785f22; }
+.canvas-clipboard { position:absolute; z-index:5; top:12px; right:12px; display:flex; gap:5px; }
+.canvas-clipboard .button { padding:6px 10px; }
+.canvas-area:focus-visible { outline:2px solid var(--green); outline-offset:-2px; }

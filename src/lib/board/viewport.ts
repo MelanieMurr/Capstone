@@ -78,3 +78,10 @@ export function zoomAt(
         catch: () => new Error("Could not update the canvas zoom.")
     });
 }
+export function wheelViewport(viewport: Viewport, pointer: Point, delta: Point, mode: number, pinch: boolean, page: Point) {
+    const x = delta.x * (mode === 1 ? 16 : mode === 2 ? page.x : 1);
+    const y = delta.y * (mode === 1 ? 16 : mode === 2 ? page.y : 1);
+    return pinch
+        ? zoomAt(viewport, pointer, Math.exp(-Math.max(-500, Math.min(500, y)) * 0.005))
+        : panTo(viewport, { x: viewport.x - x, y: viewport.y - y });
+}
