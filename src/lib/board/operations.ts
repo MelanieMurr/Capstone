@@ -1,10 +1,11 @@
+import { stickerAsset } from "./stickers";
 import { Effect } from "effect";
 import { boardDocumentSchema, boardObjectSchema } from "./model";
 import type { BoardDocument, BoardObject } from "./model";
 import type { Point } from "./viewport";
 
 export type ResizeCorner = "top-left" | "bottom-right";
-export const createObject = (board: BoardDocument, type: "sticky-note" | "text" | "shape", point: Point) => Effect.try({
+export const createObject = (board: BoardDocument, type: "sticky-note" | "text" | "shape" | "sticker", point: Point) => Effect.try({
   try: () => boardObjectSchema.parse({ id: crypto.randomUUID(), type, ...point, zIndex: Math.max(0, ...board.objects.map((item) => item.zIndex)) + 1 }),
   catch: () => new Error("Could not create this object."),
 });
@@ -35,7 +36,7 @@ export const resizeObject = (board: BoardDocument, id: string, corner: ResizeCor
   });
 });
 export function objectLabel(item: BoardObject) {
-  return `${item.type}: ${item.type === "sticky-note" ? item.text : item.type === "text" ? item.content : item.type === "shape" ? `${item.shapeType}${item.text ? `: ${item.text}` : ""}` : "connection"}`;
+  return `${item.type}: ${item.type === "sticker" ? stickerAsset(item.assetId).label : item.type === "sticky-note" ? item.text : item.type === "text" ? item.content : item.type === "shape" ? `${item.shapeType}${item.text ? `: ${item.text}` : ""}` : "connection"}`;
 }
 
 /** Create one connector referencing existing object IDs, never copied geometry. */

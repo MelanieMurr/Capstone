@@ -14,7 +14,9 @@ import { cursorToBoard } from "../lib/collaboration/presence";
 import { panTo, wheelViewport, zoomAt } from "../lib/board/viewport";
 import type { Point } from "../lib/board/viewport";
 import { deleteSelection, encodeSelection, isCanvasClipboard, moveSelection, pasteSelection, selectInRect } from "../lib/board/interaction";
+import NoteComments, { useNoteComments } from "./note-comments";
 import BoardAIPanel from "./board-ai-panel";
+import { stickers, stickerAsset } from "../lib/board/stickers";
 import { accountInitial } from "../lib/foundation/identity";
 import { insertAIResult } from "../lib/ai/insertion";
 import type { AIOperation } from "../lib/ai/evaluation";
@@ -22,13 +24,14 @@ import type { SubmittedNote } from "../lib/ai/categorization";
 import type { LiveBoard } from "../lib/collaboration/use-shared-board";
 const BoardCanvas = dynamic(() => import("./board-canvas"), { ssr: false });
 
-type Tool = "select" | "hand" | "sticky-note" | "text" | "shape" | "connector";
+type Tool = "select" | "hand" | "sticky-note" | "text" | "shape" | "connector" | "sticker";
 const tools: { id: Tool; icon: string; name: string; key: string }[] = [
   { id: "select", icon: "↖", name: "Select", key: "V" },
   { id: "hand", icon: "✋", name: "Pan", key: "H" },
   { id: "sticky-note", icon: "▧", name: "Sticky note", key: "N" },
   { id: "text", icon: "T", name: "Text", key: "T" },
   { id: "shape", icon: "□", name: "Shape", key: "S" },
+  { id: "sticker", icon: "☺", name: "Stickers", key: "K" },
   { id: "connector", icon: "↗", name: "Connector", key: "C" },
 ];
 const colors = ["#fff0b5", "#d9ede5", "#eadff3", "#f7d6c7", "#d5e7f5", "#ffffff"];
@@ -60,15 +63,18 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
   const [past, setPast] = useState<BoardDocument[]>([]);
   const [future, setFuture] = useState<BoardDocument[]>([]);
   const [status, setStatus] = useState(identity ? "" : "Saved on this device");
-  const [panel, setPanel] = useState<"properties" | "ai">("properties");
+  const [panel, setPanel] = useState<"properties" | "ai" | "comments">("properties");
   const [dialog, setDialog] = useState(false);
   const [search, setSearch] = useState("");
+  const [stickerId, setStickerId] = useState("celebrate");
+  const [stickerSearch, setStickerSearch] = useState("");
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
   const area = useRef<HTMLDivElement>(null);
   const drag = useRef<{ id: string | null; clientX: number; clientY: number; x: number; y: number; before: BoardDocument; pointerId: number; ids?: string[]; corner?: ResizeCorner } | null>(null);
   const clipboard = useRef<string | null>(null);
   const pasteLatest = useRef<(text: string) => void>(() => {});
   const object = board.objects.find((item) => item.id === selected);
+  const comments = useNoteComments(identity?.id, object?.type === "sticky-note" ? object.id : undefined);
   const run = <A,>(program: Effect.Effect<A, Error>, success: (value: A) => void, recover?: () => void) => {
     Effect.runSync(Effect.match(program, { onFailure: (error) => { setStatus(error.message); recover?.(); }, onSuccess: success }));
   };
@@ -198,10 +204,10 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
     const next = future.at(-1); if (!next) return;
     setPast((items) => [...items, board]); setFuture((items) => items.slice(0, -1)); setBoard(next);
   }
-  function add(type: "sticky-note" | "text" | "shape", x: number, y: number) {
+  function add(type: "sticky-note" | "text" | "shape" | "sticker", x: number, y: number) {
     if (readOnly) return;
     run(createObject(board, type, { x, y }), (created) => {
-      commit({ ...board, objects: [...board.objects, created] }); setSelected(created.id); setPanel("properties"); setTool("select");
+      commit({ ...board, objects: [...board.objects, created.type === "sticker" ? { ...created, assetId: stickerId } : created] }); setSelected(created.id); setPanel("properties"); setTool("select");
     });
   }
   function canvasPoint(event: { clientX: number; clientY: number }) {
@@ -237,7 +243,7 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
       selectionGesture.current = { pointerId: event.pointerId, start: point, base: event.shiftKey ? selectedIds : [] };
     } else {
       setSelected(null);
-      if (tool === "sticky-note" || tool === "text" || tool === "shape") add(tool, (point.x - pan.x) / zoom, (point.y - pan.y) / zoom);
+      if (tool === "sticky-note" || tool === "text" || tool === "shape" || tool === "sticker") add(tool, (point.x - pan.x) / zoom, (point.y - pan.y) / zoom);
     }
   }
   function startResize(event: ReactPointerEvent, item: BoardObject, corner: ResizeCorner) {
@@ -427,6 +433,7 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
           </g>;
         })}</svg>
         {[...board.objects].sort((a, b) => a.zIndex - b.zIndex || a.id.localeCompare(b.id)).filter((item) => item.type !== "connector").map((item) => <div key={item.id} role="button" tabIndex={0} data-object-id={item.id} aria-label={objectLabel(item)} aria-pressed={selectedSet.has(item.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); if (event.shiftKey && tool === "select") toggleSelection(item.id); else choose(item); } }} onPointerDown={(event) => down(event, item)} className={`canvas-object ${item.type} ${selectedSet.has(item.id) || connectFrom === item.id ? "selected" : ""}`} style={{ left: item.x, top: item.y, width: item.width, height: item.height, transform: `rotate(${item.rotation}deg)`, zIndex: item.zIndex + 1, background: item.type === "sticky-note" ? item.backgroundColor : item.type === "shape" ? item.fill : "transparent", color: item.type === "text" ? item.textColor : undefined, fontSize: item.type === "text" ? item.fontSize : undefined, border: item.type === "shape" ? `${item.borderWidth}px solid ${item.borderColor}` : undefined, borderRadius: item.type === "shape" && item.shapeType === "ellipse" ? "50%" : undefined }}>
+          {identity && item.type === "sticky-note" && <button className="note-comment-badge" aria-label={`Comments on this note (${comments.counts[item.id] ?? 0})`} onClick={() => { setSelected(item.id); setTool("select"); setPanel("comments"); }}>💬 {comments.counts[item.id] ?? 0}</button>}
           {selected === item.id && !readOnly && tool === "select" && (["top-left", "bottom-right"] as const).map((corner) => <button key={corner} className={`handle ${corner}`} aria-label={`Resize ${corner}`} title="Drag to resize, or use arrow keys" onPointerDown={(event) => startResize(event, item, corner)} onKeyDown={(event) => {
             const delta = { ArrowLeft: { x: -10, y: 0 }, ArrowRight: { x: 10, y: 0 }, ArrowUp: { x: 0, y: -10 }, ArrowDown: { x: 0, y: 10 } }[event.key];
             if (delta) { event.preventDefault(); event.stopPropagation(); run(resizeObject(board, item.id, corner, delta), commit); }
@@ -436,23 +443,31 @@ export default function Workspace({ initialDocument, identity, onDocumentChange,
       {marquee && <div className="canvas-marquee" aria-hidden="true" style={{ left: Math.min(marquee.start.x, marquee.end.x), top: Math.min(marquee.start.y, marquee.end.y), width: Math.abs(marquee.start.x - marquee.end.x), height: Math.abs(marquee.start.y - marquee.end.y) }} />}
       <div className="canvas-hint">{tool === "connector" ? "Click two objects to connect them" : tool === "hand" ? "Drag anywhere to explore your board" : tool === "select" ? "Drag empty space to select objects" : "Click anywhere to add your idea"}</div>
       <div className="toolbar" onPointerDown={(event) => event.stopPropagation()}>{tools.map((entry) => <button key={entry.id} className={tool === entry.id ? "tool active" : "tool"} disabled={readOnly && entry.id !== "select" && entry.id !== "hand"} aria-label={entry.name} aria-pressed={tool === entry.id} title={`${entry.name} (${entry.key})`} onClick={() => { cancelGesture(); setTool(entry.id); setConnectFrom(null); }}><span>{entry.icon}</span><small>{entry.key}</small></button>)}<span className="toolbar-divider" /><button className="tool" aria-label="Undo" disabled={readOnly || (live ? !live.canUndo : !past.length)} onClick={undo}>↶</button><button className="tool" aria-label="Redo" disabled={readOnly || (live ? !live.canRedo : !future.length)} onClick={redo}>↷</button></div>
+      {tool === "sticker" && <section className="sticker-picker" aria-label="Sticker picker" onPointerDown={(event) => event.stopPropagation()}>
+        <label>Find a sticker<input aria-label="Search stickers" value={stickerSearch} onChange={(event) => setStickerSearch(event.target.value)} /></label>
+        <p>Choose a sticker, then click the canvas to place it.</p>
+        {["Reactions", "Thinking"].map((category) => <div key={category}><strong>{category}</strong><div className="sticker-grid">{stickers.filter((item) => item.category === category && item.label.toLowerCase().includes(stickerSearch.toLowerCase())).map((item) => <button key={item.id} aria-label={`Choose ${item.label} sticker`} aria-pressed={item.id === stickerId} disabled={readOnly} onClick={() => setStickerId(item.id)}><span aria-hidden="true">{item.glyph}</span><small>{item.label}</small></button>)}</div></div>)}
+        {!stickers.some((item) => item.label.toLowerCase().includes(stickerSearch.toLowerCase())) && <p>No stickers match.</p>}
+        <button className="button" onClick={() => setTool("select")}>Close sticker picker</button>
+      </section>}
       <div className="canvas-clipboard" onPointerDown={(event) => event.stopPropagation()}>
         <button className="button" onClick={copyObjects} disabled={!selectedIds.length}>Copy</button>
         <button className="button" onClick={readClipboard} disabled={readOnly}>Paste</button>
       </div>
       <div className="zoom-controls" onPointerDown={(event) => event.stopPropagation()}><button aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(0.25, value - 0.1))}>−</button><button aria-label="Reset zoom" onClick={() => { setZoom(0.85); setPan({ x: 35, y: 25 }); }}>{Math.round(zoom * 100)}%</button><button aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(2, value + 0.1))}>+</button></div>
     </section>
-    <aside className="inspector"><div className="panel-tabs"><button className={panel === "properties" ? "active" : ""} onClick={() => setPanel("properties")}>Design</button><button className={panel === "ai" ? "active" : ""} onClick={() => setPanel("ai")}>✦ Assistant</button></div>
+    <aside className="inspector"><div className="panel-tabs"><button className={panel === "properties" ? "active" : ""} onClick={() => setPanel("properties")}>Design</button><button className={panel === "ai" ? "active" : ""} onClick={() => setPanel("ai")}>✦ Assistant</button><button className={panel === "comments" ? "active" : ""} onClick={() => setPanel("comments")}>Comments</button></div>
       {readOnly && <p className="panel-content">{live && !live.connected ? "Editing is paused while the board sync service reconnects. For local development, run npm run dev to start both services." : "This board is view-only. You can still manage your ChatGPT connection in Assistant."}</p>}
-      {panel === "ai" ? (
+      {panel === "comments" ? identity && object?.type === "sticky-note" ? <NoteComments key={object.id} noteId={object.id} model={comments} /> : <div className="panel-content"><h2>Comments</h2><p>{identity ? "Select a sticky note to read or leave comments." : "Open a saved board to leave comments."}</p></div> : panel === "ai" ? (
           <BoardAIPanel
               board={board}
               savedBoardId={identity?.id}
               onConfirmResult={confirmAIResult}
               editingDisabled={readOnly}
           />
-      ) : <fieldset className="readonly-fields" disabled={readOnly}>{selectedIds.length > 1 ? <div className="panel-content"><h2>{selectedIds.length} objects selected</h2><p>Drag a selected object to move the selection together.</p><button className="button danger" onClick={remove}>Delete selected objects</button></div> : object ? <div className="panel-content"><span className="eyebrow">SELECTED OBJECT</span><h2>{object.type === "sticky-note" ? "Sticky note" : object.type === "text" ? "Text" : object.type === "shape" ? "Shape" : "Connector"}</h2>
+      ) : <fieldset className="readonly-fields" disabled={readOnly}>{selectedIds.length > 1 ? <div className="panel-content"><h2>{selectedIds.length} objects selected</h2><p>Drag a selected object to move the selection together.</p><button className="button danger" onClick={remove}>Delete selected objects</button></div> : object ? <div className="panel-content"><span className="eyebrow">SELECTED OBJECT</span><h2>{object.type === "sticky-note" ? "Sticky note" : object.type === "text" ? "Text" : object.type === "shape" ? "Shape" : object.type === "sticker" ? "Sticker" : "Connector"}</h2>
         {(object.type === "sticky-note" || object.type === "text" || object.type === "shape") && <label className="field">Content<textarea aria-label="Object content" value={object.type === "text" ? object.content : object.text} onChange={(event) => update({ [object.type === "text" ? "content" : "text"]: event.target.value })} /></label>}
+        {object.type === "sticker" && <p>{stickerAsset(object.assetId).label}</p>}
         {object.type !== "connector" && <div className="field-grid">{(["x", "y", "width", "height", "rotation", "zIndex"] as const).map((key) => <label className="field" key={key}>{key}<input type="number" aria-label={key} value={object[key]} onChange={(event) => { if (event.target.value !== "") update({ [key]: Number(event.target.value) }); }} /></label>)}</div>}
         {(object.type === "sticky-note" || object.type === "shape") && <><label className="field">{object.type === "sticky-note" ? "Note color" : "Fill"}</label><div className="swatches">{colors.map((color) => <button key={color} aria-label={`Set color ${color}`} className={(object.type === "sticky-note" ? object.backgroundColor : object.fill) === color ? "picked" : ""} style={{ background: color }} onClick={() => update({ [object.type === "sticky-note" ? "backgroundColor" : "fill"]: color })} />)}</div></>}
         {object.type === "shape" && <><label className="field">Shape type<select aria-label="Shape type" value={object.shapeType} onChange={(event) => update({ shapeType: event.target.value })}><option value="rectangle">Rectangle</option><option value="ellipse">Ellipse</option></select></label><label className="field">Border width<input aria-label="Border width" type="number" min={0} max={32} value={object.borderWidth} onChange={(event) => update({ borderWidth: Number(event.target.value) })} /></label><label className="field">Border color<input type="color" value={object.borderColor} onChange={(event) => update({ borderColor: event.target.value })} /></label></>}

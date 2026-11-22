@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Effect } from "effect";
 import { Arrow, Ellipse, Group, Layer, Rect, Stage, Text } from "react-konva";
+import { stickerAsset } from "../lib/board/stickers";
 import { resolveEndpoint } from "../lib/board/model";
 import type { BoardDocument, ShapeObject } from "../lib/board/model";
 
@@ -45,7 +46,7 @@ export default function BoardCanvas({ board, pan, zoom, selected, onError }: {
           return start && end ? <Arrow key={item.id} points={[start.x, start.y, end.x, end.y]} fill={item.strokeColor} stroke={selectedIds.has(item.id) ? "#277d67" : item.strokeColor} strokeWidth={item.strokeWidth} pointerLength={8} pointerWidth={8} pointerAtBeginning={item.arrowStyle === "both"} pointerAtEnding={item.arrowStyle !== "none"} /> : null;
         })}
         {[...board.objects].sort((a, b) => a.zIndex - b.zIndex || a.id.localeCompare(b.id)).filter((item) => item.type !== "connector").map((item) => <Group key={`${item.id}-${fontReady}`} x={item.x} y={item.y} rotation={item.rotation}>
-          {item.type === "sticky-note" ? <>
+          {item.type === "sticker" ? <Text text={stickerAsset(item.assetId).glyph} width={item.width} height={item.height} fontSize={Math.min(item.width, item.height) * 0.72} align="center" verticalAlign="middle" fontFamily="Apple Color Emoji, Segoe UI Emoji, sans-serif" /> : item.type === "sticky-note" ? <>
             <Rect width={item.width} height={item.height} fill={item.backgroundColor} cornerRadius={2} shadowColor="#445d36" shadowBlur={8} shadowOffsetY={5} shadowOpacity={0.08} />
             <Rect x={item.width / 2 - 15} y={10} width={30} height={5} fill="#ffffff55" cornerRadius={3} />
             <Text x={24} y={27} text={item.text} width={Math.max(1, item.width - 48)} height={Math.max(1, item.height - 42)} fontFamily="DM Sans, sans-serif" fontSize={17} lineHeight={1.5} fill="#4d5942" />

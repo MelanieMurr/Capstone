@@ -70,6 +70,18 @@ describe("distributed Yjs board connections", () => {
     await run(a.command(command("redo")));
     expect((await contents(f)).objects).toEqual(paste.board.objects);
   });
+  it("shares a sticker, restores its binary state, and undoes it without permitting viewer edits", async () => {
+    const f = await setup(), a = await f.open(), b = await f.open(f.bob);
+    const sticker = boardDocumentSchema.parse({ schemaVersion: 1, boardId: f.boardId, objects: [{ id: randomUUID(), type: "sticker", assetId: "idea", rotation: 45 }] }).objects[0]!;
+    await run(a.command({ type: "capture", requestId: randomUUID() }));
+    await run(a.command({ type: "edit", requestId: randomUUID(), changes: [{ kind: "create", object: sticker }] }));
+    expect(await run(b.poll())).not.toBeNull();
+    expect((await contents(f)).objects).toContainEqual(sticker);
+    await run(a.command({ type: "undo", requestId: randomUUID() }));
+    expect((await contents(f)).objects).not.toContainEqual(sticker);
+    f.viewOnly();
+    await expect(run(b.command({ type: "edit", requestId: randomUUID(), changes: [{ kind: "create", object: sticker }] }))).rejects.toBeInstanceOf(BoardAccessError);
+  });
   it("retries CAS collisions and converges across independent instances", async () => {
     const f = await setup(), a = await f.open(), b = await f.open(f.bob);
     await Promise.all([run(a.command(f.edit({ x: 120 }))), run(b.command(f.edit({ text: "Bob" })))]);

@@ -29,3 +29,18 @@
 .canvas-clipboard { position:absolute; z-index:5; top:12px; right:12px; display:flex; gap:5px; }
 .canvas-clipboard .button { padding:6px 10px; }
 .canvas-area:focus-visible { outline:2px solid var(--green); outline-offset:-2px; }
+.sticker-picker { position:absolute; z-index:7; left:12px; bottom:84px; width:min(310px,calc(100% - 24px)); max-height:65%; overflow:auto; padding:14px; background:var(--paper); color:var(--ink); border:1px solid var(--line); border-radius:12px; box-shadow:0 6px 24px #0002; }
+.sticker-picker input { width:100%; padding:8px; margin:6px 0; border:1px solid var(--line); border-radius:6px; }
+.sticker-picker p { font-size:11px; }
+.sticker-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; margin:8px 0; }
+.sticker-grid button { background:white; border:1px solid #dfe5df; border-radius:7px; padding:6px 2px; display:grid; justify-items:center; gap:4px; }
+.sticker-grid button[aria-pressed=true] { outline:2px solid var(--green); }
+.sticker-grid span { font-size:25px; }
+.sticker-grid small { font-size:9px; color:#293e36; }
+.note-comment-badge { position:absolute; right:3px; top:3px; z-index:3; border:1px solid #dfe5df; border-radius:6px; background:white; color:#293e36; font-size:10px; padding:3px 5px; }
+.comment-list { list-style:none; padding:0; }
+.comment-list li { border-top:1px solid var(--line); padding:14px 0; }
+.comment-list small { display:block; margin-top:5px; }
+.comment-list .comment-body { white-space:pre-wrap; overflow-wrap:anywhere; color:var(--ink); }
+.comment-actions { display:flex; gap:6px; }
+.inspector .panel-tabs { gap:14px; padding:0 12px; }

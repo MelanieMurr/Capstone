@@ -39,6 +39,14 @@ export const shapeSchema = z.strictObject({
   borderWidth: finite.min(0).max(32).default(2),
 });
 
+export const stickerSchema = z.strictObject({
+  ...base,
+  type: z.literal("sticker"),
+  width: dimension.default(96),
+  height: dimension.default(96),
+  assetId: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/).default("celebrate"),
+});
+
 // Attached anchors are fractions of the target's unrotated bounding box.
 export const endpointSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("free"), ...point.shape }),
@@ -59,7 +67,7 @@ export const connectorSchema = z.strictObject({
   strokeWidth: finite.positive().max(32).default(2),
 });
 export const boardObjectSchema = z.discriminatedUnion("type", [
-  stickyNoteSchema, textSchema, shapeSchema, connectorSchema,
+  stickyNoteSchema, textSchema, shapeSchema, connectorSchema, stickerSchema,
 ]);
 export const boardDocumentSchema = z.strictObject({
   schemaVersion: z.literal(1),

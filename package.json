@@ -17,7 +17,8 @@
     "board:sync": "node --env-file=.env.local scripts/board-sync.ts",
     "prototype:sync": "node scripts/prototype-sync.mjs",
     "prototype:ai": "node scripts/evaluate-ai.mjs",
-    "test:vercel": "node --test tests/integration/vercel-collaboration.test.ts"
+    "test:vercel": "node --test tests/integration/vercel-collaboration.test.ts",
+    "test:comments": "node --test tests/integration/note-comments.test.ts"
   },
   "repository": {
     "type": "git",
