@@ -1,5 +1,13 @@
 # Deployment preparation
 
+November 22 security redeploy: Next.js is pinned to 16.4.6; npm audit reports
+zero vulnerabilities. All 228 unit/protocol tests and the production build passed.
+Deployment `dpl_2WDQ8CQxRt4Se7zGLF3pUZx2fXhA` was promoted to
+https://cocanvas-chi.vercel.app. The note-comments migration was applied to the
+hosted database with RLS enabled. Cookie-free checks confirmed the public root
+reaches sign-in, signup returns 200, and private board/comment APIs return 401.
+Hosted multi-account collaboration and comment moderation verification remain pending.
+
 November 11 public-entry correction: `/` now redirects through the protected
 dashboard, so signed-out visitors reach `/login?next=%2Fdashboard` and signed-in
 visitors reach their own boards. The previous root rendered the hard-coded local

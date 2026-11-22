@@ -1,7 +1,8 @@
 # Stickers and approved sticky-note comments
 
-Implemented locally November 20, 2026. No application deployment or hosted database
-migration was performed. Existing libraries are used; domain validation, requests,
+Implemented locally November 20, 2026; deployed November 22 to
+https://cocanvas-chi.vercel.app with the hosted note-comments migration applied.
+Existing libraries are used; domain validation, requests,
 and other fallible feature work run through Effect.
 
 ## Stickers
@@ -65,11 +66,10 @@ status, writer, time, and review actions only for the designated reviewer. Visib
 counts and selected-note history refresh every two seconds. History pages contain
 100 comments. Membership errors clear displayed data; RLS remains the authority.
 
-Before testing with actual accounts, apply the migration
-`supabase/migrations/20261121043536_note_comments.sql` to the intended database using
-the normal reviewed deployment workflow. Then restart local sync and reload the
-app. The migration file is ready for review and has not been applied to the
-hosted project during this work.
+The migration `supabase/migrations/20261121043536_note_comments.sql` was applied
+to the hosted project on November 22. Both new tables have RLS enabled and the
+public RPCs use invoker security. Reload the app to receive the new object types.
+For a separate environment, apply the migration before testing with actual accounts.
 
 ## Verification
 
@@ -86,8 +86,9 @@ hosted project during this work.
 - Local Chromium checked sticker search/placement/transforms/copy/undo, escaped
   comment text, moderation controls, and viewer commenting with disabled canvas
   controls. HTTP responses were mocked; SQL permissions were tested separately.
-- Hosted multi-account browser verification remains outstanding. No production
-  rollout or live-user migration result is claimed.
+- Hosted multi-account browser verification remains outstanding. The November 22
+  rollout verified deployment readiness and unauthenticated API protection;
+  actual-user comment approval and collaboration still need verification.
 
 Run unit/protocol tests with `npm test -- --maxWorkers=1`. To run the SQL suite,
 bootstrap an isolated local PostgreSQL cluster on a private Unix socket with
