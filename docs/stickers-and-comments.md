@@ -60,8 +60,13 @@ creators, statuses, timestamps, and comment-body updates.
 
 ## UI and deployment
 
-Click a note's comment badge or select a note and open the Comments tab. This panel
-remains usable for viewers, outside the disabled canvas-editing fieldset. It shows
+Click a note's comment badge to open a discussion pop-up beside that note. The
+pop-up follows the note's viewport position, flips sides near the canvas edge,
+and stays within the canvas on small screens. The composer sits above a scrollable
+history; scrolling it does not pan the canvas. Enter submits, Shift+Enter inserts
+a newline, and Escape or the close button dismisses it. Object content saves
+automatically; Enter finishes editing and Shift+Enter inserts a newline.
+The pop-up remains usable for viewers, outside the disabled canvas-editing fieldset. It shows
 status, writer, time, and review actions only for the designated reviewer. Visible
 counts and selected-note history refresh every two seconds. History pages contain
 100 comments. Membership errors clear displayed data; RLS remains the authority.

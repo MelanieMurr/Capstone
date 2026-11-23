@@ -57,14 +57,16 @@ export default function NoteComments({ noteId, model }: { noteId: string; model:
   const [body, setBody] = useState(""), [busy, setBusy] = useState(false), [message, setMessage] = useState("");
   const pending = useRef<{ id: string; body: string } | null>(null);
   const mounted = useRef(true);
+  const inFlight = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   async function act(program: Effect.Effect<void, Error>, success: () => void) {
-    if (busy) return; setBusy(true); setMessage("");
+    if (inFlight.current) return; inFlight.current = true; setBusy(true); setMessage("");
     await Effect.runPromise(Effect.match(program, { onSuccess: () => { if (mounted.current) success(); }, onFailure: (error) => { if (mounted.current) setMessage(error.message); } }));
+    inFlight.current = false;
     if (mounted.current) setBusy(false);
   }
   return <section className="panel-content note-comments" aria-label="Sticky note comments">
-    <h2>Comments</h2><p>Comments need this note’s author’s approval. If that teammate no longer has board access, the board owner reviews them.</p>
+    <p>Comments need this note’s author’s approval. If that teammate no longer has board access, the board owner reviews them.</p>
     <p>Pending and rejected comments are visible only to their writer and reviewer. Approved comments are visible to board members.</p>
     {model.error && <p role="alert">{model.error}</p>}
     <form onSubmit={(event) => { event.preventDefault();
@@ -77,16 +79,19 @@ export default function NoteComments({ noteId, model }: { noteId: string; model:
         yield* model.submit({ action: "create", id: request.id, noteId, body: request.body });
       }), () => { pending.current = null; setBody(""); setMessage("Comment submitted for approval."); });
     }}>
-      <label className="field">Your comment<textarea aria-label="Your comment" value={body} maxLength={2000} required disabled={busy} onChange={(event) => setBody(event.target.value)} /></label>
+      <label className="field">Your comment<textarea autoFocus aria-describedby="comment-keyboard-hint" onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!inFlight.current && body.trim()) event.currentTarget.form?.requestSubmit(); } }} aria-label="Your comment" value={body} maxLength={2000} required disabled={busy} onChange={(event) => setBody(event.target.value)} /></label>
+      <small id="comment-keyboard-hint">Enter to submit · Shift+Enter for a new line</small>
       <button className="button primary" disabled={busy || !body.trim()}>Submit comment</button>
     </form>
     {message && <p role="status">{message}</p>}
+    <div className="comment-history" tabIndex={0} role="region" aria-label="Previous comments">
     {!model.comments.length && !model.error && <p>No visible comments on this page.</p>}
     <ul className="comment-list">{model.comments.map((comment) => <li key={comment.id}>
       <strong>{comment.author_name}</strong><small>{new Date(comment.created_at).toLocaleString()} · {comment.status}</small>
       <p className="comment-body">{comment.body}</p>
       {comment.status === "pending" && model.reviewerId === model.viewerId && <div className="comment-actions">{(["approved", "rejected"] as const).map((status) => <button className="button" key={status} disabled={busy} onClick={() => { void act(model.submit({ action: "review", id: comment.id, status }), () => setMessage(status === "approved" ? "Comment approved." : "Comment rejected.")); }}>{status === "approved" ? "Approve" : "Reject"}</button>)}</div>}
     </li>)}</ul>
+    </div>
     <nav aria-label="Comment pages"><button className="button" disabled={busy || model.page === 0} onClick={() => model.setPage((page) => Math.max(0, page - 1))}>Newer comments</button><button className="button" disabled={busy || !model.hasMore} onClick={() => model.setPage((page) => page + 1)}>Older comments</button></nav>
   </section>;
 }
